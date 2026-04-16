@@ -36,7 +36,7 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <Link to="/superadmin/login" className="text-sm font-semibold text-gray-500 hover:text-gray-900">Entrar</Link>
+            <Link to="/login" className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors">Entrar</Link>
             <Link 
               to="/signup" 
               className="px-6 py-2.5 bg-gray-900 text-white text-sm font-bold rounded-full hover:bg-gray-800 transition-all shadow-md active:scale-95"

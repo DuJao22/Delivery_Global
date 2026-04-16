@@ -13,6 +13,7 @@ import ClientLogin from './pages/Client/Login';
 import ClientProfile from './pages/Client/Profile';
 import LandingPage from './pages/SaaS/LandingPage';
 import SignupPage from './pages/SaaS/SignupPage';
+import PortalLogin from './pages/SaaS/PortalLogin';
 import SuperAdminDashboard from './pages/SaaS/SuperAdminDashboard';
 import SuperAdminLogin from './pages/SaaS/SuperAdminLogin';
 import MotoboyLogin from './pages/Motoboy/Login';
@@ -56,6 +57,7 @@ export default function App() {
           <Routes>
             {/* SaaS Routes */}
             <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<PortalLogin />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/superadmin/login" element={<SuperAdminLogin />} />
             <Route 

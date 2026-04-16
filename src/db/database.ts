@@ -120,7 +120,7 @@ export async function initDb() {
         // First Tenant
         const result1 = await database.run(`
           INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng) 
-          VALUES ('burguer-central', 'Burguer Central', 'admin', 'admin123', 'Av. Paulista, 1000, São Paulo', -23.5614, -46.6559)
+          VALUES ('burguer-central', 'Burguer Central', 'Dujao', '30031936', 'Av. Paulista, 1000, São Paulo', -23.5614, -46.6559)
         `);
         const id1 = result1.lastID;
 
@@ -134,7 +134,7 @@ export async function initDb() {
         // Second Tenant (Requested Example)
         const result2 = await database.run(`
           INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng) 
-          VALUES ('lanchonete-exemplo', 'Lanchonete Exemplo', 'admin', 'admin123', 'Rua das Flores, 123, Centro', -23.5505, -46.6333)
+          VALUES ('lanchonete-exemplo', 'Lanchonete Exemplo', 'Dujao', '30031936', 'Rua das Flores, 123, Centro', -23.5505, -46.6333)
         `);
         const id2 = result2.lastID;
 
