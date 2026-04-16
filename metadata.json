@@ -1,0 +1,7 @@
+{
+  "name": "Delivery Global - Gestão Inteligente de Rotas",
+  "description": "Sistema completo de delivery com gestão inteligente e manual de rotas, acompanhamento de motoboys e pedidos em tempo real.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
