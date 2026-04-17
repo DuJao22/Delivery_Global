@@ -167,14 +167,31 @@ export async function initDb() {
       );
     `);
 
-      // Seed initial data if empty
-      const tenantCount = await database.get('SELECT COUNT(*) as count FROM tenants');
-      if (tenantCount.count === 0) {
-        // First Tenant
+      // Seed initial data if missing
+      const tenants = await database.all('SELECT slug FROM tenants');
+      const existingSlugs = tenants.map(t => t.slug);
+
+      // Force example tenants to be exempt
+      try {
+        // Check if column exists first
+        const tableInfo = await database.all("PRAGMA table_info(tenants)");
+        const hasExempt = tableInfo.some(col => col.name === 'is_exempt');
+        if (!hasExempt) {
+          await database.exec("ALTER TABLE tenants ADD COLUMN is_exempt INTEGER DEFAULT 0");
+          console.log("[DB] Added is_exempt column to tenants table");
+        }
+        await database.run("UPDATE tenants SET is_exempt = 1 WHERE slug IN ('burguer-central', 'lanchonete-exemplo')");
+      } catch (e) {
+        console.warn("[DB] Failed to force exempt status:", (e as Error).message);
+      }
+
+      // First Tenant
+      if (!existingSlugs.includes('burguer-central')) {
         const result1 = await database.run(`
-          INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng) 
-          VALUES ('burguer-central', 'Burguer Central', 'Dujao', '30031936', 'Av. Paulista, 1000, São Paulo', -23.5614, -46.6559)
-        `);        const id1 = result1.lastID;
+          INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng, is_exempt) 
+          VALUES ('burguer-central', 'Burguer Central', 'Dujao', '30031936', 'Av. Paulista, 1000, São Paulo', -23.5614, -46.6559, 1)
+        `);
+        const id1 = result1.lastID;
 
         // Create categories for tenant 1
         const catBurgers = await database.run('INSERT INTO categories (tenant_id, name, order_index) VALUES (?, "Hambúrgueres", 0)', id1);
@@ -184,7 +201,7 @@ export async function initDb() {
         await database.run(`
           INSERT INTO menu_items (tenant_id, category_id, name, description, price, category, image) VALUES 
           (?, ?, 'X-Burger Clássico', 'Pão Brioche, Blend 180g, Queijo Cheddar, Maionese da Casa.', 28.90, 'Hambúrgueres', 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&q=80'),
-          (?, ?, 'Combo Brutal', 'X-Burger + Batata Frita + Refrigerante 350ml.', 45.00, 'Combos', 'https://images.unsplash.com/photo-1594212699903-ec8a3ecc50f5?w=500&q=80'),
+          (?, ?, 'Combo Brutal', 'X-Burger + Batata Frita + Refrigerante 350ml.', 45.00, 'Combos', 'https://images.unsplash.com/photo-1594212699903-ec8a3eca50f5?w=500&q=80'),
           (?, ?, 'Fritas com Cheddar e Bacon', 'Batata palito crocante com queijo e bacon.', 22.50, 'Acompanhamentos', 'https://images.unsplash.com/photo-1573082883907-8b9bb260163c?w=500&q=80')
         `, id1, catBurgers.lastID, id1, catCombos.lastID, id1, catSides.lastID);
 
@@ -198,10 +215,18 @@ export async function initDb() {
           await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Bacon crocante', 'addition', 5.00);
         }
 
-        // Second Tenant (Requested Example)
+        await database.run(`
+          INSERT INTO motoboys (tenant_id, name, phone, password, plate, status) VALUES 
+          (?, 'Roberto Silva', '11999999999', '123456', 'XYZ-1234', 'online'),
+          (?, 'Marta Santos', '11888888888', '123456', 'ABC-5678', 'online')
+        `, id1, id1);
+      }
+
+      // Second Tenant (Requested Example)
+      if (!existingSlugs.includes('lanchonete-exemplo')) {
         const result2 = await database.run(`
-          INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng) 
-          VALUES ('lanchonete-exemplo', 'Lanchonete Exemplo', 'Dujao', '30031936', 'Rua das Flores, 123, Centro', -23.5505, -46.6333)
+          INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng, is_exempt) 
+          VALUES ('lanchonete-exemplo', 'Lanchonete Exemplo', 'Dujao', '30031936', 'Rua das Flores, 123, Centro', -23.5505, -46.6333, 1)
         `);
         const id2 = result2.lastID;
 
@@ -217,10 +242,8 @@ export async function initDb() {
 
         await database.run(`
           INSERT INTO motoboys (tenant_id, name, phone, password, plate, status) VALUES 
-          (?, 'Roberto Silva', '11999999999', '123456', 'XYZ-1234', 'online'),
-          (?, 'Marta Santos', '11888888888', '123456', 'ABC-5678', 'online'),
           (?, 'Carlos Correon', '11777777777', '123456', 'KLI-9988', 'online')
-        `, id1, id1, id2);
+        `, id2);
       }
   } catch (error) {
     console.error('Error initializing SQLite database:', error);

@@ -50,6 +50,11 @@ async function startServer() {
   // Initialize Cron Jobs
   initCronJobs();
 
+  // Test endpoint
+  app.get("/api/test", (req, res) => {
+    res.json({ message: "API is working", timestamp: new Date().toISOString() });
+  });
+
   // API routes FIRST
   app.use("/api", apiRoutes);
 

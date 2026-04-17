@@ -119,7 +119,7 @@ export default function ProductModal({ itemId, tenantSlug, onClose, onAddToCart 
           <div className="p-6 md:p-8 pb-4 flex items-center justify-between shrink-0">
              <div>
                 <h2 className="text-xl md:text-2xl font-black italic uppercase tracking-tighter text-gray-900 leading-none">{item?.name}</h2>
-                <p className="text-[10px] md:text-xs font-bold text-red-500 uppercase tracking-widest mt-2 px-1">Personalize seu pedido</p>
+                <p className="text-[10px] md:text-xs font-bold text-primary uppercase tracking-widest mt-2 px-1">Personalize seu pedido</p>
              </div>
              <button 
                onClick={onClose}
@@ -145,14 +145,14 @@ export default function ProductModal({ itemId, tenantSlug, onClose, onAddToCart 
                            onClick={() => toggleOption(opt)}
                            className={`w-full flex items-center justify-between p-3 md:p-4 rounded-2xl border-2 transition-all ${
                              selectedOptions.find(o => o.id === opt.id) 
-                             ? 'border-red-500 bg-red-50 text-red-600' 
+                             ? 'border-primary bg-primary/5 text-primary' 
                              : 'border-gray-50 bg-gray-50 text-gray-500 hover:border-gray-200'
                            }`}
                          >
                             <div className="flex items-center gap-3">
                                <div className={`w-5 h-5 rounded-lg flex items-center justify-center border-2 transition-all ${
                                  selectedOptions.find(o => o.id === opt.id) 
-                                 ? 'bg-red-500 border-red-500' 
+                                 ? 'bg-primary border-primary' 
                                  : 'border-gray-300'
                                }`}>
                                   {selectedOptions.find(o => o.id === opt.id) && <Check className="w-3 h-3 text-white" />}
@@ -184,14 +184,14 @@ export default function ProductModal({ itemId, tenantSlug, onClose, onAddToCart 
                 <div className="flex items-center gap-3 md:gap-4 bg-white p-1.5 md:p-2 rounded-xl md:rounded-2xl shadow-sm border border-gray-100">
                    <button 
                      onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                     className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                     className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-gray-400 hover:text-primary transition-colors"
                    >
                      <Minus className="w-4 h-4 md:w-5 md:h-5" />
                    </button>
                    <span className="w-4 md:w-6 text-center font-black text-base md:text-lg">{quantity}</span>
                    <button 
                      onClick={() => setQuantity(q => q + 1)}
-                     className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                     className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-gray-400 hover:text-primary transition-colors"
                    >
                      <Plus className="w-4 h-4 md:w-5 md:h-5" />
                    </button>
@@ -208,7 +208,7 @@ export default function ProductModal({ itemId, tenantSlug, onClose, onAddToCart 
                  onAddToCart(item, quantity, observation, selectedOptions);
                  onClose();
                }}
-               className="w-full py-4 md:py-5 bg-red-600 text-white font-bold rounded-xl md:rounded-2xl shadow-xl shadow-red-200 hover:bg-red-700 transition-all active:scale-95 flex items-center justify-center gap-2 md:gap-3 uppercase tracking-widest text-[10px] md:text-xs"
+               className="w-full py-4 md:py-5 bg-primary text-white font-bold rounded-xl md:rounded-2xl shadow-xl shadow-primary/20 hover:bg-accent transition-all active:scale-95 flex items-center justify-center gap-2 md:gap-3 uppercase tracking-widest text-[10px] md:text-xs"
              >
                 <ShoppingCart className="w-4 h-4 md:w-5 md:h-5" /> Adicionar ao Carrinho
              </button>

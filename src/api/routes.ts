@@ -4,10 +4,28 @@ import { getDb } from '../db/database';
 
 const router = Router();
 
+router.get('/system/status', async (req, res) => {
+  try {
+    const db = await getDb();
+    const tenants = await db.all('SELECT slug, is_exempt, created_at FROM tenants');
+    res.json({
+      db: 'connected',
+      tenantCount: tenants.length,
+      tenants: tenants,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'System check failed', details: (error as Error).message });
+  }
+});
+
 // Middleware to resolve tenant
 const resolveTenant = async (req: Request, res: Response, next: NextFunction) => {
   const slug = req.headers['x-tenant-slug'] || req.query.tenant || req.params.tenantSlug;
+  console.log(`[API] Resolving tenant for slug: ${slug} (Path: ${req.path})`);
+  
   if (!slug) {
+    console.warn('[API] Missing tenant slug in request');
     return res.status(400).json({ error: 'Tenant slug is required' });
   }
 
@@ -16,13 +34,19 @@ const resolveTenant = async (req: Request, res: Response, next: NextFunction) =>
     const tenant = await db.get('SELECT * FROM tenants WHERE slug = ?', slug);
     
     if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' });
+      console.warn(`[API] Tenant not found for slug: ${slug}`);
+      return res.status(404).json({ error: `Estabelecimento não encontrado: ${slug}` });
     }
     
     (req as any).tenant = tenant;
     next();
   } catch (error) {
-    res.status(500).json({ error: 'Error resolving tenant' });
+    console.error('[API] Error in resolveTenant:', error);
+    res.status(500).json({ 
+      error: 'Erro ao carregar dados do estabelecimento',
+      details: (error as Error).message,
+      slug: slug 
+    });
   }
 };
 
@@ -771,6 +795,12 @@ router.post('/motoboy/orders/:orderId/accept', resolveMotoboy, async (req, res) 
     } catch (error) {
       res.status(500).json({ error: 'Error accepting order' });
     }
+});
+
+// Default 404 for API
+router.use((req, res) => {
+  console.warn(`[API] Route not found: ${req.method} ${req.url}`);
+  res.status(404).json({ error: `API route ${req.method} ${req.url} not found` });
 });
 
 export default router;

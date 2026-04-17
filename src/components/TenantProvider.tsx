@@ -22,11 +22,25 @@ export function TenantProvider() {
   useEffect(() => {
     if (!tenantSlug) return;
 
-    fetch(`/api/store-info`, {
+    fetch('/api/store-info', {
       headers: { 'x-tenant-slug': tenantSlug }
     })
-      .then(res => {
-        if (!res.ok) throw new Error('Tenant not found or suspended');
+      .then(async res => {
+        const contentType = res.headers.get('content-type');
+        if (!res.ok) {
+          if (contentType && contentType.includes('application/json')) {
+            const errData = await res.json();
+            throw new Error(errData.error || 'Tenant not found');
+          }
+          throw new Error(`Server error: ${res.status} ${res.statusText}`);
+        }
+        
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await res.text();
+          console.error('Expected JSON but got:', text.substring(0, 100));
+          throw new Error('Invalid server response (not JSON)');
+        }
+        
         return res.json();
       })
       .then(data => {
