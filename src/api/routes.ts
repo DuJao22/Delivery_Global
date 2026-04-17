@@ -413,14 +413,14 @@ router.delete('/users/:userId/addresses/:addressId', resolveTenant, async (req, 
 });
 
 router.post('/orders', resolveTenant, async (req, res) => {
-  const { user_id, client_name, client_phone, items, total_price, delivery_address, delivery_lat, delivery_lng } = req.body;
+  const { user_id, client_name, client_phone, items, total_price, delivery_address, delivery_lat, delivery_lng, payment_method } = req.body;
   const tenantId = (req as any).tenant.id;
   
   try {
     const db = await getDb();
     const result = await db.run(
-      'INSERT INTO orders (tenant_id, user_id, client_name, client_phone, items, total_price, delivery_address, delivery_lat, delivery_lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      tenantId, user_id || null, client_name, client_phone, JSON.stringify(items), total_price, delivery_address, delivery_lat, delivery_lng
+      'INSERT INTO orders (tenant_id, user_id, client_name, client_phone, items, total_price, delivery_address, delivery_lat, delivery_lng, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      tenantId, user_id || null, client_name, client_phone, JSON.stringify(items), total_price, delivery_address, delivery_lat, delivery_lng, payment_method || 'PIX'
     );
     
     // Add history

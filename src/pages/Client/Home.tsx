@@ -448,19 +448,22 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Floating Action / Saiba Mais (Matching user image) */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[40] pointer-events-none w-full max-w-xs px-6">
-        <motion.button 
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="w-full bg-white text-gray-900 px-8 py-4 rounded-full shadow-[0_15px_30px_rgba(0,0,0,0.15)] border border-gray-100 flex items-center justify-center gap-3 font-bold text-lg pointer-events-auto"
-        >
-          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white">
-             <Zap className="w-4 h-4 fill-current" />
-          </div>
-          Saiba mais
-        </motion.button>
-      </div>
+      {/* Floating Action / Saiba Mais (Only for Example Store) */}
+      {tenantSlug === 'lanchonete-exemplo' && (
+        <div className={`fixed ${cart.length > 0 ? 'bottom-28' : 'bottom-8'} left-1/2 -translate-x-1/2 z-[40] pointer-events-none w-full max-w-xs px-6 transition-all duration-300`}>
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => navigate('/')}
+            className="w-full bg-white text-gray-900 px-6 py-4 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.2)] border border-gray-100 flex items-center justify-center gap-3 font-bold text-base md:text-lg pointer-events-auto"
+          >
+            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white shrink-0 shadow-lg shadow-blue-200">
+               <Zap className="w-4 h-4 fill-current" />
+            </div>
+            <span className="truncate">Saiba mais</span>
+          </motion.button>
+        </div>
+      )}
 
       {/* Product Detail Modal */}
       <AnimatePresence>

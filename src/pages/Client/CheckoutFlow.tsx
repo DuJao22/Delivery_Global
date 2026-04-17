@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronRight, ChevronLeft, MapPin, CheckCircle2, ShoppingBag, CreditCard, Lock, Phone, User, AlertCircle } from 'lucide-react';
+import { ChevronRight, ChevronLeft, MapPin, CheckCircle2, ShoppingBag, CreditCard, Lock, Phone, User, AlertCircle, Zap } from 'lucide-react';
 import { tenantFetch } from '../../lib/api';
 
 interface CartItem {
@@ -48,6 +48,7 @@ export default function CheckoutFlow() {
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'Dinheiro' | 'Cartão'>('PIX');
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -200,8 +201,9 @@ export default function CheckoutFlow() {
           client_name: currentUser.name,
           client_phone: currentUser.phone,
           delivery_address: fullAddress,
-          items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price })),
-          total_price: total
+          items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price, selectedOptions: i.selectedOptions, observation: i.observation })),
+          total_price: total,
+          payment_method: paymentMethod
         })
       });
 
@@ -557,14 +559,31 @@ export default function CheckoutFlow() {
 
                         <div className="mt-10 pt-10 border-t">
                             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Método de Pagamento</h3>
-                            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-4">
-                               <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center text-white">
-                                  <CreditCard className="w-5 h-5" />
-                               </div>
-                               <div>
-                                  <p className="font-bold text-sm">Pagamento na Entrega</p>
-                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-none mt-1">Dinheiro ou Cartão</p>
-                               </div>
+                            <div className="grid grid-cols-1 gap-3">
+                                {[
+                                  { id: 'PIX', label: 'PIX', icon: <Zap className="w-5 h-5" />, sub: 'Pagamento instantâneo' },
+                                  { id: 'Dinheiro', label: 'Dinheiro', icon: <ShoppingBag className="w-5 h-5" />, sub: 'Pagar na entrega' },
+                                  { id: 'Cartão', label: 'Cartão', icon: <CreditCard className="w-5 h-5" />, sub: 'Maquininha na entrega' }
+                                ].map(method => (
+                                  <button
+                                    key={method.id}
+                                    onClick={() => setPaymentMethod(method.id as any)}
+                                    className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${paymentMethod === method.id ? 'bg-red-50 border-red-500 ring-2 ring-red-500/20' : 'bg-gray-50 border-gray-100 hover:border-gray-200'}`}
+                                  >
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${paymentMethod === method.id ? 'bg-red-600 text-white' : 'bg-gray-900 text-white'}`}>
+                                      {method.icon}
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="font-bold text-sm text-gray-900">{method.label}</p>
+                                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-none mt-1">{method.sub}</p>
+                                    </div>
+                                    {paymentMethod === method.id && (
+                                      <div className="ml-auto w-6 h-6 bg-red-600 rounded-full flex items-center justify-center text-white scale-75">
+                                        <CheckCircle2 className="w-4 h-4" />
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
                             </div>
                         </div>
                      </div>
