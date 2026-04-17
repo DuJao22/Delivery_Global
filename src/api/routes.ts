@@ -48,6 +48,22 @@ router.get('/superadmin/tenants', async (req, res) => {
   }
 });
 
+router.get('/tenants/check/:slug', async (req, res) => {
+  const { slug } = req.params;
+  try {
+    const db = await getDb();
+    // Use case-insensitive search if possible, or force lowercase
+    const tenant = await db.get('SELECT slug, name, status FROM tenants WHERE LOWER(slug) = ?', slug.toLowerCase());
+    if (tenant) {
+      res.json({ exists: true, name: tenant.name, status: tenant.status, slug: tenant.slug });
+    } else {
+      res.json({ exists: false });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Error checking tenant' });
+  }
+});
+
 router.post('/superadmin/tenants', async (req, res) => {
   const { slug, name, admin_username, admin_password, address, lat, lng } = req.body;
   console.log('[API] Criando novo tenant:', { slug, name });

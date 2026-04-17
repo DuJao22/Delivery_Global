@@ -21,6 +21,8 @@ export default function SuperAdminDashboard() {
   const [tenants, setTenants] = useState<any[]>([]);
   const navigate = useNavigate();
   const [editingTenant, setEditingTenant] = useState<any | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [deletingTenant, setDeletingTenant] = useState<any | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isIframe, setIsIframe] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,6 +33,14 @@ export default function SuperAdminDashboard() {
     cover_image: '',
     payment_config: '',
     is_exempt: false
+  });
+
+  const [createData, setCreateData] = useState({
+    name: '',
+    slug: '',
+    admin_username: '',
+    admin_password: '',
+    address: ''
   });
 
   useEffect(() => {
@@ -100,9 +110,42 @@ export default function SuperAdminDashboard() {
   };
 
   const deleteTenant = async (id: number) => {
-    if (confirm('Tem certeza que deseja excluir esta conta permanentemente?')) {
-      await fetch(`/api/superadmin/tenants/${id}`, { method: 'DELETE' });
-      fetchTenants();
+    setDeletingTenant(tenants.find(t => t.id === id));
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingTenant) return;
+    try {
+      const res = await fetch(`/api/superadmin/tenants/${deletingTenant.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeletingTenant(null);
+        fetchTenants();
+      } else {
+        alert('Erro ao excluir conta');
+      }
+    } catch (error) {
+      alert('Erro de conexão');
+    }
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/superadmin/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createData)
+      });
+      if (res.ok) {
+        setIsCreating(false);
+        setCreateData({ name: '', slug: '', admin_username: '', admin_password: '', address: '' });
+        fetchTenants();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erro ao criar conta');
+      }
+    } catch (error) {
+      alert('Erro de conexão');
     }
   };
 
@@ -260,7 +303,15 @@ export default function SuperAdminDashboard() {
           </div>
         </div>
 
-        <h2 className="text-xl font-bold mb-4 text-text-main">Gerenciar Contas</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <h2 className="text-xl font-bold text-text-main">Gerenciar Contas</h2>
+          <button 
+            onClick={() => setIsCreating(true)}
+            className="px-6 py-2 bg-primary text-white rounded-xl hover:bg-accent transition-colors font-bold shadow-lg shadow-red-200"
+          >
+            + Cadastrar Novo
+          </button>
+        </div>
 
         {/* Desktop Table View */}
         <div className="hidden md:block bg-surface rounded-2xl shadow-sm border border-secondary overflow-hidden">
@@ -469,6 +520,115 @@ export default function SuperAdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Create Modal */}
+      {isCreating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-surface w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden my-auto">
+            <div className="p-6 border-b border-secondary flex justify-between items-center sticky top-0 bg-surface z-10">
+              <h2 className="text-xl font-bold text-text-main">Cadastrar Novo Estabelecimento</h2>
+              <button onClick={() => setIsCreating(false)} className="text-text-light hover:text-text-main p-2 -mr-2">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <form onSubmit={handleCreate} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-main">Nome do Negócio</label>
+                <input 
+                  type="text" 
+                  required 
+                  className="w-full p-3 rounded-xl border border-secondary bg-background text-text-main"
+                  value={createData.name}
+                  onChange={e => setCreateData({...createData, name: e.target.value})}
+                  placeholder="Ex: Pizzaria do Zé"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-main">Link (Slug)</label>
+                <input 
+                  type="text" 
+                  required 
+                  className="w-full p-3 rounded-xl border border-secondary bg-background text-text-main"
+                  value={createData.slug}
+                  onChange={e => setCreateData({...createData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')})}
+                  placeholder="ex: pizzaria-ze"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-text-main">Endereço</label>
+                <input 
+                  type="text" 
+                  required 
+                  className="w-full p-3 rounded-xl border border-secondary bg-background text-text-main"
+                  value={createData.address}
+                  onChange={e => setCreateData({...createData, address: e.target.value})}
+                  placeholder="Rua, Número, Bairro, Cidade"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-text-main">Usuário Manager</label>
+                  <input 
+                    type="text" 
+                    required 
+                    className="w-full p-3 rounded-xl border border-secondary bg-background text-text-main"
+                    value={createData.admin_username}
+                    onChange={e => setCreateData({...createData, admin_username: e.target.value})}
+                    placeholder="admin"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-text-main">Senha Manager</label>
+                  <input 
+                    type="text" 
+                    required 
+                    className="w-full p-3 rounded-xl border border-secondary bg-background text-text-main"
+                    value={createData.admin_password}
+                    onChange={e => setCreateData({...createData, admin_password: e.target.value})}
+                    placeholder="senha123"
+                  />
+                </div>
+              </div>
+              <div className="pt-4 flex flex-col-reverse sm:flex-row justify-end gap-3">
+                <button type="button" onClick={() => setIsCreating(false)} className="w-full sm:w-auto px-6 py-3 rounded-xl font-medium text-text-light hover:bg-secondary transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" className="w-full sm:w-auto px-6 py-3 rounded-xl font-medium bg-primary text-white hover:bg-accent transition-colors">
+                  Criar Conta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-surface w-full max-w-sm rounded-[32px] shadow-2xl p-8 text-center">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <X className="w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-bold text-text-main mb-2">Excluir Conta?</h2>
+            <p className="text-text-light mb-8">
+              Tem certeza que deseja excluir <strong>{deletingTenant.name}</strong>? Esta ação é irreversível e apagará todos os pedidos e dados vinculados.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={confirmDelete}
+                className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 transition-all shadow-lg shadow-red-200"
+              >
+                Sim, Excluir Registro
+              </button>
+              <button 
+                onClick={() => setDeletingTenant(null)}
+                className="w-full py-4 bg-secondary text-text-main font-bold rounded-2xl hover:bg-secondary/80 transition-all"
+              >
+                Não, Manter Conta
+              </button>
+            </div>
           </div>
         </div>
       )}

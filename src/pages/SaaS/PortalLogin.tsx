@@ -6,22 +6,87 @@ import { Layout, ArrowRight, Shield, ShoppingBag, Globe, AlertCircle } from 'luc
 export default function PortalLogin() {
   const [slug, setSlug] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleAccess = (e: React.FormEvent) => {
+  const getCleanedSlug = (input: string) => {
+    let raw = input.trim();
+    try {
+      if (raw.includes('/') || raw.includes('.')) {
+        const urlStr = raw.startsWith('http') ? raw : `http://${raw}`;
+        const url = new URL(urlStr);
+        const pathParts = url.pathname.split('/').filter(p => p);
+        if (pathParts.length > 0) return pathParts[0].toLowerCase().replace(/[^a-z0-9-]/g, '');
+      }
+    } catch (e) {}
+    if (raw.includes('/')) {
+      raw = raw.split('/').filter(p => p).pop() || raw;
+    }
+    return raw.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  };
+
+  const detectedSlug = getCleanedSlug(slug);
+
+  const handleAccess = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
+    
     if (!slug.trim()) {
       setError('Por favor, informe o link da sua loja.');
       return;
     }
 
-    // Clean slug: remove spaces, lowercase, etc.
-    const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-    
-    // Redirect to the tenant-specific admin login
-    navigate(`/${cleanSlug}/admin/login`);
+    setLoading(true);
+
+    try {
+      // Handle full URLs or paths: extract the last part of the path
+      let rawSlug = slug.trim();
+      try {
+        // Check if it's a URL
+        if (rawSlug.includes('/') || rawSlug.includes('.')) {
+          const urlStr = rawSlug.startsWith('http') ? rawSlug : `http://${rawSlug}`;
+          const url = new URL(urlStr);
+          const pathParts = url.pathname.split('/').filter(p => p);
+          if (pathParts.length > 0) {
+            // Usually the first part of the path is the tenant slug (e.g. /my-store/...)
+            rawSlug = pathParts[0];
+          }
+        }
+      } catch (e) {
+        // If not a URL, just take the last part after / if any
+        if (rawSlug.includes('/')) {
+          rawSlug = rawSlug.split('/').filter(p => p).pop() || rawSlug;
+        }
+      }
+
+      // Final cleaning: remove everything except alphanumeric and hyphens
+      const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      
+      if (!cleanSlug) {
+        setError('Link inválido.');
+        setLoading(false);
+        return;
+      }
+
+      // Check if tenant exists
+      const res = await fetch(`/api/tenants/check/${cleanSlug}`);
+      const data = await res.json();
+
+      if (data.exists) {
+        if (data.status === 'suspended') {
+          setError('Este estabelecimento está suspenso. Entre em contato com o suporte.');
+        } else {
+          // Redirect to the tenant-specific admin login
+          navigate(`/${cleanSlug}/admin/login`);
+        }
+      } else {
+        setError('Estabelecimento não encontrado. Verifique o link informado.');
+      }
+    } catch (err) {
+      setError('Erro ao validar o link. Tente novamente mais tarde.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -78,16 +143,23 @@ export default function PortalLogin() {
                 />
               </div>
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-2 ml-1">
-                delivery-master.app/<span className="text-red-600">{slug || 'seu-link'}</span>
+                delivery-master.app/<span className="text-red-600">{detectedSlug || 'seu-link'}</span>
               </p>
             </div>
 
             <button 
               type="submit"
-              className="w-full py-5 bg-red-600 text-white font-black rounded-2xl hover:bg-red-700 transition-all shadow-xl shadow-red-200 flex items-center justify-center group active:scale-95"
+              disabled={loading}
+              className="w-full py-5 bg-red-600 text-white font-black rounded-2xl hover:bg-red-700 transition-all shadow-xl shadow-red-200 flex items-center justify-center group active:scale-95 disabled:opacity-50 disabled:cursor-wait"
             >
-              Acessar Painel
-              <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              {loading ? (
+                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  Acessar Painel
+                  <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
           </form>
 

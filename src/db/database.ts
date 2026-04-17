@@ -16,6 +16,9 @@ export async function getDb() {
       filename: dbPath,
       driver: sqlite3.Database
     });
+
+    // Enable foreign keys
+    await db.exec('PRAGMA foreign_keys = ON;');
   }
   return db;
 }
@@ -37,6 +40,9 @@ export async function initDb() {
         admin_username TEXT,
         admin_password TEXT,
         status TEXT DEFAULT 'active',
+        payment_config TEXT,
+        is_exempt INTEGER DEFAULT 0,
+        subscription_due_date DATETIME,
         address TEXT,
         lat REAL,
         lng REAL,
