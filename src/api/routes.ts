@@ -418,9 +418,23 @@ router.post('/orders', resolveTenant, async (req, res) => {
   
   try {
     const db = await getDb();
+    
+    // Verify user exists if user_id is provided (to avoid FK constraint failures after DB wipes)
+    let validUserId = null;
+    if (user_id) {
+      const user = await db.get('SELECT id FROM users WHERE id = ?', user_id);
+      if (user) {
+        validUserId = user_id;
+      } else {
+        console.warn(`[API] Usuário ID ${user_id} não encontrado no banco. Tratando como pedido de visitante.`);
+      }
+    }
+
+    console.log('[API] Tentando criar pedido:', { tenantId, user_id: validUserId, payment_method, change_amount });
+    
     const result = await db.run(
       'INSERT INTO orders (tenant_id, user_id, client_name, client_phone, items, total_price, delivery_address, delivery_lat, delivery_lng, payment_method, change_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      tenantId, user_id || null, client_name, client_phone, JSON.stringify(items), total_price, delivery_address, delivery_lat || null, delivery_lng || null, payment_method || 'PIX', change_amount || null
+      tenantId, validUserId, client_name, client_phone, JSON.stringify(items), total_price, delivery_address, delivery_lat || null, delivery_lng || null, payment_method || 'PIX', change_amount || null
     );
     
     // Add history
@@ -428,7 +442,11 @@ router.post('/orders', resolveTenant, async (req, res) => {
     
     res.json({ success: true, orderId: result.lastID });
   } catch (error) {
-    res.status(500).json({ error: 'Error creating order' });
+    console.error('[API] Erro ao criar pedido:', error);
+    res.status(500).json({ 
+      error: 'Error creating order',
+      details: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 

@@ -186,13 +186,27 @@ export async function initDb() {
         console.warn("[DB] Failed to force exempt status:", (e as Error).message);
       }
 
-      // Ensure orders has change_amount column
+      // Ensure orders has all necessary columns
       try {
         const orderTableInfo = await database.all("PRAGMA table_info(orders)");
-        const hasChangeAmount = orderTableInfo.some(col => col.name === 'change_amount');
-        if (!hasChangeAmount) {
+        const columns = orderTableInfo.map(col => col.name);
+        
+        if (!columns.includes('change_amount')) {
           await database.exec("ALTER TABLE orders ADD COLUMN change_amount REAL");
           console.log("[DB] Added change_amount column to orders table");
+        }
+        
+        if (!columns.includes('payment_method')) {
+          await database.exec("ALTER TABLE orders ADD COLUMN payment_method TEXT");
+          console.log("[DB] Added payment_method column to orders table");
+        }
+
+        // Add coordinates if missing (for older databases)
+        if (!columns.includes('delivery_lat')) {
+          await database.exec("ALTER TABLE orders ADD COLUMN delivery_lat REAL");
+        }
+        if (!columns.includes('delivery_lng')) {
+          await database.exec("ALTER TABLE orders ADD COLUMN delivery_lng REAL");
         }
       } catch (e) {
         console.warn("[DB] Failed to migrate orders table:", (e as Error).message);
