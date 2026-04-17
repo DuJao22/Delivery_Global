@@ -10,7 +10,8 @@ export default function SignupPage() {
     cover_image: '',
     payment_config: '',
     admin_username: '',
-    admin_password: ''
+    admin_password: '',
+    populateSampleData: true
   });
   const [loading, setLoading] = useState(false);
 
@@ -130,6 +131,19 @@ export default function SignupPage() {
               onChange={e => setFormData({...formData, payment_config: e.target.value})}
               placeholder="Sua chave Pix"
             />
+          </div>
+          <div className="flex items-center gap-3 p-4 bg-primary/5 rounded-xl border border-primary/10">
+            <input 
+              type="checkbox"
+              id="populate"
+              className="w-5 h-5 accent-primary cursor-pointer"
+              checked={formData.populateSampleData}
+              onChange={e => setFormData({...formData, populateSampleData: e.target.checked})}
+            />
+            <label htmlFor="populate" className="text-sm font-bold text-primary cursor-pointer leading-tight">
+              Começar com produtos e categorias de exemplo
+              <p className="text-[10px] font-normal text-gray-500 mt-0.5">Recomendado para testar o sistema rapidamente</p>
+            </label>
           </div>
           <button 
             type="submit" 

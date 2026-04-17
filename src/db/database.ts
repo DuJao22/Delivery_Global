@@ -174,25 +174,28 @@ export async function initDb() {
         const result1 = await database.run(`
           INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng) 
           VALUES ('burguer-central', 'Burguer Central', 'Dujao', '30031936', 'Av. Paulista, 1000, São Paulo', -23.5614, -46.6559)
-        `);
-        const id1 = result1.lastID;
+        `);        const id1 = result1.lastID;
+
+        // Create categories for tenant 1
+        const catBurgers = await database.run('INSERT INTO categories (tenant_id, name, order_index) VALUES (?, "Hambúrgueres", 0)', id1);
+        const catCombos = await database.run('INSERT INTO categories (tenant_id, name, order_index) VALUES (?, "Combos", 1)', id1);
+        const catSides = await database.run('INSERT INTO categories (tenant_id, name, order_index) VALUES (?, "Acompanhamentos", 2)', id1);
 
         await database.run(`
-          INSERT INTO menu_items (tenant_id, name, description, price, category, image) VALUES 
-          (?, 'X-Burger Clássico', 'Pão Brioche, Blend 180g, Queijo Cheddar, Maionese da Casa.', 28.90, 'Hambúrgueres', 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&q=80'),
-          (?, 'Combo Brutal', 'X-Burger + Batata Frita + Refrigerante 350ml.', 45.00, 'Combos', 'https://images.unsplash.com/photo-1594212699903-ec8a3eca50f5?w=500&q=80'),
-          (?, 'Fritas com Cheddar e Bacon', 'Batata palito crocante com queijo e bacon.', 22.50, 'Acompanhamentos', 'https://images.unsplash.com/photo-1573082883907-8b9bb260163c?w=500&q=80')
-        `, id1, id1, id1);
+          INSERT INTO menu_items (tenant_id, category_id, name, description, price, category, image) VALUES 
+          (?, ?, 'X-Burger Clássico', 'Pão Brioche, Blend 180g, Queijo Cheddar, Maionese da Casa.', 28.90, 'Hambúrgueres', 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&q=80'),
+          (?, ?, 'Combo Brutal', 'X-Burger + Batata Frita + Refrigerante 350ml.', 45.00, 'Combos', 'https://images.unsplash.com/photo-1594212699903-ec8a3ecc50f5?w=500&q=80'),
+          (?, ?, 'Fritas com Cheddar e Bacon', 'Batata palito crocante com queijo e bacon.', 22.50, 'Acompanhamentos', 'https://images.unsplash.com/photo-1573082883907-8b9bb260163c?w=500&q=80')
+        `, id1, catBurgers.lastID, id1, catCombos.lastID, id1, catSides.lastID);
 
         // Add options for X-Burger
-        const xburger = await database.get('SELECT id FROM menu_items WHERE name = "X-Burger Clássico"');
+        const xburger = await database.get('SELECT id FROM menu_items WHERE name = "X-Burger Clássico" AND tenant_id = ?', id1);
         if (xburger) {
-          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Ponto da Carne: Mal Passado', 'variation', 0);
-          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Ponto da Carne: Ao Ponto', 'variation', 0);
-          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Ponto da Carne: Bem Passado', 'variation', 0);
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Mal Passado', 'variation', 0);
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Ao Ponto', 'variation', 0);
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Bem Passado', 'variation', 0);
           await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Extra queijo', 'addition', 4.50);
           await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Bacon crocante', 'addition', 5.00);
-          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Sem Cebola', 'variation', 0);
         }
 
         // Second Tenant (Requested Example)
@@ -202,12 +205,15 @@ export async function initDb() {
         `);
         const id2 = result2.lastID;
 
+        // Create categories for tenant 2
+        const catPizza = await database.run('INSERT INTO categories (tenant_id, name, order_index) VALUES (?, "Pizzas", 0)', id2);
+        const catDrinks = await database.run('INSERT INTO categories (tenant_id, name, order_index) VALUES (?, "Bebidas", 1)', id2);
+
         await database.run(`
-          INSERT INTO menu_items (tenant_id, name, description, price, category, image) VALUES 
-          (?, 'Pizza Calabresa Média', 'Molho de tomate, mussarela, calabresa e orégano.', 42.00, 'Pizzas', 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&q=80'),
-          (?, 'Suco de Laranja 500ml', 'Suco natural feito na hora.', 12.00, 'Bebidas', 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=500&q=80'),
-          (?, 'Açaí 500ml', 'Com granola, banana e leite em pó.', 18.50, 'Sobremesas', 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=500&q=80')
-        `, id2, id2, id2);
+          INSERT INTO menu_items (tenant_id, category_id, name, description, price, category, image) VALUES 
+          (?, ?, 'Pizza Calabresa Média', 'Molho de tomate, mussarela, calabresa e orégano.', 42.00, 'Pizzas', 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&q=80'),
+          (?, ?, 'Suco de Laranja 500ml', 'Suco natural feito na hora.', 12.00, 'Bebidas', 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=500&q=80')
+        `, id2, catPizza.lastID, id2, catDrinks.lastID);
 
         await database.run(`
           INSERT INTO motoboys (tenant_id, name, phone, password, plate, status) VALUES 

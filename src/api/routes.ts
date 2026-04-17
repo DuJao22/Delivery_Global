@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { Database } from 'sqlite';
 import { getDb } from '../db/database';
 
 const router = Router();
@@ -64,9 +65,80 @@ router.get('/tenants/check/:slug', async (req, res) => {
   }
 });
 
+async function seedTenantSampleData(db: Database, tenantId: number) {
+  // 1. Create categories
+  const categories = ['Hambúrgueres', 'Bebidas', 'Acompanhamentos'];
+  const categoryIds: number[] = [];
+  
+  for (let i = 0; i < categories.length; i++) {
+    const result = await db.run(
+      'INSERT INTO categories (tenant_id, name, order_index) VALUES (?, ?, ?)',
+      tenantId, categories[i], i
+    );
+    categoryIds.push(result.lastID!);
+  }
+
+  // 2. Create products
+  const products = [
+    {
+      categoryId: categoryIds[0],
+      name: 'X-Burger Clássico',
+      description: 'Pão de brioche, blend de 150g, queijo cheddar, alface, tomate e maionese secreta.',
+      price: 28.90,
+      image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80',
+      options: [
+        { name: 'Bem Passado', type: 'variation', price: 0 },
+        { name: 'Ao Ponto', type: 'variation', price: 0 },
+        { name: 'Mal Passado', type: 'variation', price: 0 },
+        { name: 'Extra Queijo', type: 'addition', price: 4.50 },
+        { name: 'Bacon', type: 'addition', price: 6.00 }
+      ]
+    },
+    {
+      categoryId: categoryIds[0],
+      name: 'Monstruoso Burger',
+      description: 'Pão australiano, 2 blends de 180g, bacon caramelizado, cebola crispy e muito cheddar.',
+      price: 42.00,
+      image: 'https://images.unsplash.com/photo-1594212699903-ec8a3ecc50f6?w=800&q=80',
+      options: []
+    },
+    {
+      categoryId: categoryIds[1],
+      name: 'Coca-Cola 350ml',
+      description: 'Lata gelada.',
+      price: 6.50,
+      image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=800&q=80',
+      options: []
+    },
+    {
+      categoryId: categoryIds[2],
+      name: 'Batata Rústica',
+      description: 'Porção crocante com alecrim e páprica.',
+      price: 18.00,
+      image: 'https://images.unsplash.com/photo-1630384060421-cb20d0e0649d?w=800&q=80',
+      options: []
+    }
+  ];
+
+  for (const prod of products) {
+    const result = await db.run(
+      'INSERT INTO menu_items (tenant_id, category_id, name, description, price, image) VALUES (?, ?, ?, ?, ?, ?)',
+      tenantId, prod.categoryId, prod.name, prod.description, prod.price, prod.image
+    );
+    const itemId = result.lastID!;
+
+    for (const opt of prod.options) {
+      await db.run(
+        'INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)',
+        itemId, opt.name, opt.type, opt.price
+      );
+    }
+  }
+}
+
 router.post('/superadmin/tenants', async (req, res) => {
-  const { slug, name, admin_username, admin_password, address, lat, lng } = req.body;
-  console.log('[API] Criando novo tenant:', { slug, name });
+  const { slug, name, admin_username, admin_password, address, lat, lng, populateSampleData } = req.body;
+  console.log('[API] Criando novo tenant:', { slug, name, populateSampleData });
   
   try {
     const db = await getDb();
@@ -82,8 +154,14 @@ router.post('/superadmin/tenants', async (req, res) => {
       'INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?)',
       slug, name, admin_username || 'admin', admin_password || 'admin123', address, lat, lng
     );
-    console.log('[API] Tenant criado com sucesso. ID:', result.lastID);
-    res.json({ success: true, tenantId: result.lastID });
+    const tenantId = result.lastID!;
+    
+    if (populateSampleData) {
+      await seedTenantSampleData(db, tenantId);
+    }
+
+    console.log('[API] Tenant criado com sucesso. ID:', tenantId);
+    res.json({ success: true, tenantId });
   } catch (error) {
     console.error('[API] Erro detalhado ao criar tenant:', error);
     res.status(500).json({ 
