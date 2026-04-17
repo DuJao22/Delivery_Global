@@ -162,10 +162,50 @@ router.get('/menu', resolveTenant, async (req, res) => {
   try {
     const db = await getDb();
     const tenantId = (req as any).tenant.id;
+    
+    // Get all categories first
+    const categories = await db.all('SELECT * FROM categories WHERE tenant_id = ? ORDER BY order_index ASC', tenantId);
+    
+    // Get all items
     const items = await db.all('SELECT * FROM menu_items WHERE tenant_id = ? AND status = "available"', tenantId);
-    res.json(items);
+    
+    // Group items by category
+    const menu = categories.map(cat => ({
+      ...cat,
+      items: items.filter(item => item.category_id === cat.id)
+    }));
+    
+    // Add items that might not have a category (fallback)
+    const categorizedItemIds = new Set(items.filter(i => i.category_id).map(i => i.id));
+    const uncategorizedItems = items.filter(i => !i.category_id || !categorizedItemIds.has(i.id));
+    
+    if (uncategorizedItems.length > 0) {
+      menu.push({
+        id: 0,
+        name: 'Geral',
+        order_index: 999,
+        is_active: 1,
+        items: uncategorizedItems
+      } as any);
+    }
+
+    res.json(menu);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching menu' });
+  }
+});
+
+router.get('/menu-items/:itemId', resolveTenant, async (req, res) => {
+  const { itemId } = req.params;
+  try {
+    const db = await getDb();
+    const item = await db.get('SELECT * FROM menu_items WHERE id = ?', itemId);
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+    
+    const options = await db.all('SELECT * FROM product_options WHERE menu_item_id = ? AND is_active = 1', itemId);
+    res.json({ ...item, options });
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching item details' });
   }
 });
 
@@ -211,6 +251,62 @@ router.post('/users/register', resolveTenant, async (req, res) => {
     res.json({ success: true, user_id: result.lastID, name, phone });
   } catch (error) {
     res.status(500).json({ error: 'Error creating user' });
+  }
+});
+
+// --- USER ADDRESSES ---
+router.get('/users/:userId/addresses', resolveTenant, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const db = await getDb();
+    const addresses = await db.all('SELECT * FROM user_addresses WHERE user_id = ? ORDER BY is_default DESC, created_at DESC', userId);
+    res.json(addresses);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching addresses' });
+  }
+});
+
+router.post('/users/:userId/addresses', resolveTenant, async (req, res) => {
+  const { userId } = req.params;
+  const { type, cep, street, number, neighborhood, city, state, complement, is_default } = req.body;
+  try {
+    const db = await getDb();
+    
+    if (is_default) {
+      await db.run('UPDATE user_addresses SET is_default = 0 WHERE user_id = ?', userId);
+    }
+    
+    // Check if address already exists to avoid duplicates
+    const existing = await db.get(
+      'SELECT id FROM user_addresses WHERE user_id = ? AND street = ? AND number = ? AND cep = ?',
+      userId, street, number, cep
+    );
+
+    if (existing) {
+      if (is_default) {
+        await db.run('UPDATE user_addresses SET is_default = 1 WHERE id = ?', existing.id);
+      }
+      return res.json({ success: true, id: existing.id, existed: true });
+    }
+
+    const result = await db.run(
+      'INSERT INTO user_addresses (user_id, type, cep, street, number, neighborhood, city, state, complement, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      userId, type || 'Casa', cep, street, number, neighborhood, city, state, complement, is_default ? 1 : 0
+    );
+    res.json({ success: true, id: result.lastID });
+  } catch (error) {
+    res.status(500).json({ error: 'Error saving address' });
+  }
+});
+
+router.delete('/users/:userId/addresses/:addressId', resolveTenant, async (req, res) => {
+  const { addressId } = req.params;
+  try {
+    const db = await getDb();
+    await db.run('DELETE FROM user_addresses WHERE id = ?', addressId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Error deleting address' });
   }
 });
 
@@ -270,6 +366,8 @@ router.get('/admin/stats', resolveTenant, async (req, res) => {
     const db = await getDb();
     const totalOrders = await db.get('SELECT COUNT(*) as count FROM orders WHERE tenant_id = ?', tenantId);
     const totalRevenue = await db.get('SELECT SUM(total_price) as sum FROM orders WHERE tenant_id = ? AND status = "delivered"', tenantId);
+    const pendingOrders = await db.get('SELECT COUNT(*) as count FROM orders WHERE tenant_id = ? AND status IN ("pending", "preparing")', tenantId);
+    const activeMotoboys = await db.get('SELECT COUNT(*) as count FROM motoboys WHERE tenant_id = ? AND status != "offline"', tenantId);
     
     // Orders by day for chart
     const ordersByDay = await db.all(`
@@ -281,13 +379,99 @@ router.get('/admin/stats', resolveTenant, async (req, res) => {
       LIMIT 7
     `, tenantId);
 
+    const revenueByMethod = await db.all(`
+      SELECT payment_method as method, SUM(total_price) as total
+      FROM orders
+      WHERE tenant_id = ? AND status = "delivered"
+      GROUP BY method
+    `, tenantId);
+
     res.json({
       totalOrders: totalOrders.count || 0,
       totalRevenue: totalRevenue.sum || 0,
-      ordersByDay: ordersByDay.length > 0 ? ordersByDay : [{ day: new Date().toISOString().split('T')[0], total: 0 }]
+      pendingOrders: pendingOrders.count || 0,
+      activeMotoboys: activeMotoboys.count || 0,
+      ordersByDay: ordersByDay.length > 0 ? ordersByDay : [{ day: new Date().toISOString().split('T')[0], total: 0 }],
+      revenueByMethod
     });
   } catch (error) {
     res.status(500).json({ error: 'Error fetching stats' });
+  }
+});
+
+// Settings Management
+router.get('/admin/settings', resolveTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
+  res.json({
+    logo: tenant.logo,
+    is_open: tenant.is_open,
+    delivery_fee: tenant.delivery_fee,
+    prep_time_avg: tenant.prep_time_avg,
+    opening_hours: tenant.opening_hours ? JSON.parse(tenant.opening_hours) : null,
+    address: tenant.address
+  });
+});
+
+router.put('/admin/settings', resolveTenant, async (req, res) => {
+  const tenantId = (req as any).tenant.id;
+  const { logo, is_open, delivery_fee, prep_time_avg, opening_hours, address } = req.body;
+  try {
+    const db = await getDb();
+    await db.run(
+      'UPDATE tenants SET logo = ?, is_open = ?, delivery_fee = ?, prep_time_avg = ?, opening_hours = ?, address = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      logo, is_open ? 1 : 0, delivery_fee, prep_time_avg, JSON.stringify(opening_hours), address, tenantId
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating settings' });
+  }
+});
+
+// Category Management
+router.get('/admin/categories', resolveTenant, async (req, res) => {
+  const tenantId = (req as any).tenant.id;
+  try {
+    const db = await getDb();
+    const categories = await db.all('SELECT * FROM categories WHERE tenant_id = ? ORDER BY order_index ASC', tenantId);
+    res.json(categories);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching categories' });
+  }
+});
+
+router.post('/admin/categories', resolveTenant, async (req, res) => {
+  const tenantId = (req as any).tenant.id;
+  const { name, order_index } = req.body;
+  try {
+    const db = await getDb();
+    const result = await db.run(
+      'INSERT INTO categories (tenant_id, name, order_index) VALUES (?, ?, ?)',
+      tenantId, name, order_index || 0
+    );
+    res.json({ success: true, id: result.lastID });
+  } catch (error) {
+    res.status(500).json({ error: 'Error creating category' });
+  }
+});
+
+// Customer Management
+router.get('/admin/customers', resolveTenant, async (req, res) => {
+  const tenantId = (req as any).tenant.id;
+  try {
+    const db = await getDb();
+    const customers = await db.all(`
+      SELECT u.id, u.name, u.phone, u.is_vip, u.created_at,
+             COUNT(o.id) as total_orders,
+             SUM(o.total_price) as total_spent
+      FROM users u
+      LEFT JOIN orders o ON u.id = o.user_id AND o.status = 'delivered'
+      WHERE u.tenant_id = ?
+      GROUP BY u.id
+      ORDER BY total_orders DESC
+    `, tenantId);
+    res.json(customers);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching customers' });
   }
 });
 
@@ -471,6 +655,43 @@ router.post('/motoboy/orders/:orderId/complete', resolveMotoboy, async (req, res
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Error completing order' });
+    }
+});
+
+router.get('/motoboy/available-orders', resolveMotoboy, async (req, res) => {
+    const tenantId = (req as any).motoboy.tenant_id;
+    try {
+      const db = await getDb();
+      const orders = await db.all(`
+        SELECT * FROM orders 
+        WHERE tenant_id = ? AND status = 'ready' AND motoboy_id IS NULL
+        ORDER BY created_at ASC
+      `, tenantId);
+      res.json(orders);
+    } catch (error) {
+      res.status(500).json({ error: 'Error fetching available orders' });
+    }
+});
+
+router.post('/motoboy/orders/:orderId/accept', resolveMotoboy, async (req, res) => {
+    const { orderId } = req.params;
+    const motoboyId = (req as any).motoboy.id;
+    const tenantId = (req as any).motoboy.tenant_id;
+    try {
+      const db = await getDb();
+      
+      // Atomic check if still available
+      const order = await db.get('SELECT * FROM orders WHERE id = ? AND tenant_id = ? AND status = "ready" AND motoboy_id IS NULL', orderId, tenantId);
+      if (!order) {
+        return res.status(400).json({ error: 'Pedido não está mais disponível' });
+      }
+
+      await db.run('UPDATE orders SET status = "out_for_delivery", motoboy_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', motoboyId, orderId);
+      await db.run('INSERT INTO order_history (order_id, status, note) VALUES (?, "out_for_delivery", "Motoboy aceitou a entrega")', orderId);
+      
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Error accepting order' });
     }
 });
 

@@ -18,7 +18,10 @@ import {
   Search,
   MoreVertical,
   MapPin,
-  Navigation
+  Navigation,
+  ShoppingBag,
+  X,
+  Phone
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
@@ -37,6 +40,10 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { tenantFetch } from '../../lib/api';
+import CategoriesManager from '../../components/Admin/CategoriesManager';
+import StoreSettings from '../../components/Admin/StoreSettings';
+import CustomerList from '../../components/Admin/CustomerList';
+import ProductsManager from '../../components/Admin/ProductsManager';
 
 // Fix Leaflet icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -82,11 +89,17 @@ interface Motoboy {
 
 export default function AdminDashboard() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'fleet' | 'menu' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'fleet' | 'motoboys' | 'menu' | 'categories' | 'customers' | 'settings'>('overview');
   const [orders, setOrders] = useState<Order[]>([]);
   const [motoboys, setMotoboys] = useState<Motoboy[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [lastOrderId, setLastOrderId] = useState<number | null>(null);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [isCreatingMotoboy, setIsCreatingMotoboy] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [newMotoboy, setNewMotoboy] = useState({ name: '', phone: '', plate: '', password: '' });
+  const [copySuccess, setCopySuccess] = useState<number | null>(null);
   const navigate = useNavigate();
 
   const fetchData = async () => {
@@ -102,6 +115,19 @@ export default function AdminDashboard() {
       const fleetData = await fleetRes.json();
       const statsData = await statsRes.json();
 
+      // Check for new orders
+      if (lastOrderId !== null && ordersData.length > 0) {
+        const newest = Math.max(...ordersData.map((o: any) => o.id));
+        if (newest > lastOrderId) {
+          playNotificationSound();
+          setNotificationOpen(true);
+          setTimeout(() => setNotificationOpen(false), 8000);
+        }
+        setLastOrderId(newest);
+      } else if (ordersData.length > 0) {
+        setLastOrderId(Math.max(...ordersData.map((o: any) => o.id)));
+      }
+
       setOrders(ordersData);
       setMotoboys(fleetData);
       setStats(statsData);
@@ -112,15 +138,43 @@ export default function AdminDashboard() {
     }
   };
 
+  const playNotificationSound = () => {
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audio.play().catch(e => console.log('Audio play blocked by browser'));
+  };
+
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 10000); // Polling every 10s
     return () => clearInterval(interval);
-  }, [tenantSlug]);
+  }, [tenantSlug, lastOrderId]);
 
   const handleLogout = () => {
     localStorage.removeItem(`admin_token_${tenantSlug}`);
     navigate(`/${tenantSlug}/admin/login`);
+  };
+
+  const handleCreateMotoboy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await tenantFetch(tenantSlug!, '/api/admin/motoboys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMotoboy)
+      });
+      setIsCreatingMotoboy(false);
+      setNewMotoboy({ name: '', phone: '', plate: '', password: '' });
+      fetchData();
+    } catch (err) {
+      console.error('Error creating motoboy:', err);
+      alert('Erro ao criar entregador');
+    }
+  };
+
+  const copyToClipboard = (text: string, id: number) => {
+    navigator.clipboard.writeText(text);
+    setCopySuccess(id);
+    setTimeout(() => setCopySuccess(null), 2000);
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
@@ -161,9 +215,80 @@ export default function AdminDashboard() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-sans">Carregando Dashboard...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r hidden lg:flex flex-col sticky top-0 h-screen">
+    <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
+      {/* Mobile Top Bar */}
+      <div className="lg:hidden bg-white border-b px-4 h-16 flex items-center justify-between sticky top-0 z-[60]">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center text-white font-bold">
+            D
+          </div>
+          <span className="font-bold text-gray-900 tracking-tight">Delivery Global</span>
+        </div>
+        <button 
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          {mobileMenuOpen ? <X className="w-6 h-6" /> : <MoreVertical className="w-6 h-6" />}
+        </button>
+      </div>
+
+      {/* Mobile Menu Overlay */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 bg-black/50 z-[70] lg:hidden"
+            />
+            <motion.aside 
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              className="fixed inset-y-0 left-0 w-72 bg-white z-[80] lg:hidden flex flex-col shadow-2xl"
+            >
+              <div className="p-6 border-b flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-red-500 rounded-xl flex items-center justify-center text-white font-bold">
+                    D
+                  </div>
+                  <span className="font-bold text-gray-900 tracking-tight text-lg">Delivery Global</span>
+                </div>
+                <button onClick={() => setMobileMenuOpen(false)} className="p-2 text-gray-400">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+                <NavItem active={activeTab === 'overview'} onClick={() => { setActiveTab('overview'); setMobileMenuOpen(false); }} icon={<BarChart2 className="w-5 h-5" />} label="Visão Geral" />
+                <NavItem active={activeTab === 'orders'} onClick={() => { setActiveTab('orders'); setMobileMenuOpen(false); }} icon={<ShoppingBag className="w-5 h-5" />} label="Pedidos" />
+                <NavItem active={activeTab === 'fleet'} onClick={() => { setActiveTab('fleet'); setMobileMenuOpen(false); }} icon={<MapIcon className="w-5 h-5" />} label="Monitoramento" />
+                <NavItem active={activeTab === 'motoboys'} onClick={() => { setActiveTab('motoboys'); setMobileMenuOpen(false); }} icon={<Truck className="w-5 h-5" />} label="Entregadores" />
+                <div className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest">Cardápio</div>
+                <NavItem active={activeTab === 'categories'} onClick={() => { setActiveTab('categories'); setMobileMenuOpen(false); }} icon={<Filter className="w-5 h-5" />} label="Categorias" />
+                <NavItem active={activeTab === 'menu'} onClick={() => { setActiveTab('menu'); setMobileMenuOpen(false); }} icon={<Package className="w-5 h-5" />} label="Produtos" />
+                <div className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest">Gestão</div>
+                <NavItem active={activeTab === 'customers'} onClick={() => { setActiveTab('customers'); setMobileMenuOpen(false); }} icon={<Users className="w-5 h-5" />} label="Clientes" />
+                <NavItem active={activeTab === 'settings'} onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); }} icon={<Settings className="w-5 h-5" />} label="Configurar Loja" />
+              </nav>
+
+              <div className="p-4 border-t">
+                <button 
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all font-medium"
+                >
+                  <LogOut className="w-5 h-5" /> Sair do Painel
+                </button>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop Sidebar */}
+      <aside className="w-64 bg-white border-r hidden lg:flex flex-col sticky top-0 h-screen shrink-0">
         <div className="p-6 border-b flex items-center gap-3">
           <div className="w-10 h-10 bg-red-500 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-red-200">
             D
@@ -173,10 +298,15 @@ export default function AdminDashboard() {
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <NavItem active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} icon={<BarChart2 className="w-5 h-5" />} label="Visão Geral" />
-          <NavItem active={activeTab === 'orders'} onClick={() => setActiveTab('orders')} icon={<Package className="w-5 h-5" />} label="Pedidos" />
-          <NavItem active={activeTab === 'fleet'} onClick={() => setActiveTab('fleet')} icon={<MapIcon className="w-5 h-5" />} label="Frota & Mapa" />
-          <NavItem active={activeTab === 'menu'} onClick={() => setActiveTab('menu')} icon={<Plus className="w-5 h-5" />} label="Cardápio" />
-          <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings className="w-5 h-5" />} label="Configurações" />
+          <NavItem active={activeTab === 'orders'} onClick={() => setActiveTab('orders')} icon={<ShoppingBag className="w-5 h-5" />} label="Pedidos" />
+          <NavItem active={activeTab === 'fleet'} onClick={() => setActiveTab('fleet')} icon={<MapIcon className="w-5 h-5" />} label="Monitoramento" />
+          <NavItem active={activeTab === 'motoboys'} onClick={() => setActiveTab('motoboys')} icon={<Truck className="w-5 h-5" />} label="Entregadores" />
+          <div className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest">Cardápio</div>
+          <NavItem active={activeTab === 'categories'} onClick={() => setActiveTab('categories')} icon={<Filter className="w-5 h-5" />} label="Categorias" />
+          <NavItem active={activeTab === 'menu'} onClick={() => setActiveTab('menu')} icon={<Package className="w-5 h-5" />} label="Produtos" />
+          <div className="py-4 px-4 text-[10px] font-black uppercase text-gray-400 tracking-widest">Gestão</div>
+          <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} icon={<Users className="w-5 h-5" />} label="Clientes" />
+          <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings className="w-5 h-5" />} label="Configurar Loja" />
         </nav>
 
         <div className="p-4 border-t">
@@ -191,8 +321,29 @@ export default function AdminDashboard() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
-        <header className="bg-white border-b h-16 px-8 flex items-center justify-between sticky top-0 z-30">
-          <h2 className="text-xl font-bold text-gray-900">
+        <AnimatePresence>
+          {notificationOpen && (
+            <motion.div 
+              initial={{ opacity: 0, y: -50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -50, scale: 0.9 }}
+              className="fixed top-20 right-8 z-[100] bg-gray-900 text-white p-6 rounded-[32px] shadow-2xl border border-white/10 flex items-center gap-6"
+            >
+               <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center animate-bounce">
+                  <Bell className="w-6 h-6" />
+               </div>
+               <div>
+                  <h4 className="font-black uppercase italic tracking-tighter text-lg">Novo Pedido Recebido!</h4>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Confira a aba de pedidos agora</p>
+               </div>
+               <button onClick={() => setNotificationOpen(false)} className="p-2 hover:bg-white/10 rounded-full">
+                  <X className="w-5 h-5" />
+               </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <header className="bg-white border-b h-16 px-4 md:px-8 flex items-center justify-between sticky top-[64px] lg:top-0 z-30">
+          <h2 className="text-base md:text-xl font-bold text-gray-900 truncate mr-4">
             {activeTab === 'overview' && 'Dashboard Financeiro'}
             {activeTab === 'orders' && 'Gestão de Pedidos'}
             {activeTab === 'fleet' && 'Monitoramento em Tempo Real'}
@@ -210,7 +361,7 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        <div className="p-8">
+        <div className="p-4 md:p-8">
           <AnimatePresence mode="wait">
             {activeTab === 'overview' && stats && (
               <motion.div 
@@ -222,10 +373,10 @@ export default function AdminDashboard() {
               >
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <StatCard label="Receita Hoje" value={`R$ ${stats.totalRevenue.toFixed(2)}`} icon={<BarChart2 className="w-6 h-6 text-emerald-600" />} trend="+12%" />
-                  <StatCard label="Total Pedidos" value={String(stats.totalOrders)} icon={<Package className="w-6 h-6 text-blue-600" />} trend="Novo" />
-                  <StatCard label="Motoboys Ativos" value={String(motoboys.filter(m => m.status === 'online').length)} icon={<Truck className="w-6 h-6 text-purple-600" />} />
-                  <StatCard label="Ticket Médio" value={`R$ ${((stats.totalRevenue || 0) / (stats.totalOrders || 1)).toFixed(2)}`} icon={<AlertCircle className="w-6 h-6 text-amber-600" />} />
+                  <StatCard label="Pedidos Hoje" value={String(stats.totalOrders)} icon={<ShoppingBag className="w-6 h-6 text-blue-600" />} trend="Novo" />
+                  <StatCard label="Faturamento Total" value={`R$ ${(stats.totalRevenue || 0).toFixed(2)}`} icon={<BarChart2 className="w-6 h-6 text-emerald-600" />} trend="+12%" />
+                  <StatCard label="Pedidos Pendentes" value={String(stats.pendingOrders)} icon={<Clock className="w-6 h-6 text-amber-600" />} theme="amber" />
+                  <StatCard label="Motoboys Online" value={String(stats.activeMotoboys)} icon={<Truck className="w-6 h-6 text-emerald-600" />} theme="emerald" />
                 </div>
 
                 {/* Charts Area */}
@@ -327,7 +478,7 @@ export default function AdminDashboard() {
                             <p className="text-sm text-gray-600 truncate max-w-[200px]">{order.delivery_address}</p>
                           </td>
                           <td className="px-6 py-5">
-                            <p className="font-bold text-gray-900">R$ {order.total_price.toFixed(2)}</p>
+                            <p className="font-bold text-gray-900">R$ {(order.total_price || 0).toFixed(2)}</p>
                           </td>
                           <td className="px-6 py-5">
                             <div className="flex items-center gap-2">
@@ -366,6 +517,16 @@ export default function AdminDashboard() {
                                   <Truck className="w-4 h-4" />
                                 </button>
                               )}
+                              <button 
+                                onClick={() => {
+                                  const text = `Olá ${order.client_name}! Sou do delivery e estou entrando em contato sobre seu pedido #${order.id}.`;
+                                  window.open(`https://wa.me/${order.client_name?.replace(/\D/g, '') || ''}?text=${encodeURIComponent(text)}`);
+                                }}
+                                className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100"
+                                title="WhatsApp"
+                              >
+                                <Phone className="w-4 h-4" />
+                              </button>
                               <button className="p-2 hover:bg-gray-100 rounded-lg">
                                 <MoreVertical className="w-4 h-4 text-gray-400" />
                               </button>
@@ -459,15 +620,173 @@ export default function AdminDashboard() {
               </motion.div>
             )}
             
-            {/* Other tabs omitted for brevity in this initial rewrite */}
-            {(activeTab === 'menu' || activeTab === 'settings') && (
-              <div className="h-[400px] bg-white rounded-3xl border border-dashed border-gray-200 flex flex-col items-center justify-center text-center p-8">
-                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-4">
-                  <Clock className="w-8 h-8 text-gray-300" />
+            {activeTab === 'motoboys' && (
+              <motion.div
+                key="motoboys"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-6"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900 tracking-tight">Gerenciar Entregadores</h3>
+                    <p className="text-sm text-gray-500">Cadastre e acompanhe seus motoboys.</p>
+                  </div>
+                  <button 
+                    onClick={() => setIsCreatingMotoboy(true)}
+                    className="bg-red-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-red-200 hover:bg-red-700 transition-all active:scale-95"
+                  >
+                    <Plus className="w-5 h-5" /> Cadastrar Entregador
+                  </button>
                 </div>
-                <h3 className="font-bold text-gray-900 mb-2">Módulo em Desenvolvimento</h3>
-                <p className="text-sm text-gray-500 max-w-xs">Estamos refatorando as ferramentas Legais para o novo sistema de delivery. Em breve!</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {motoboys.map(m => (
+                    <div key={m.id} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+                       <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 rounded-full -mr-12 -mt-12 group-hover:bg-red-50 transition-colors"></div>
+                       
+                       <div className="relative z-10">
+                         <div className="flex items-center gap-4 mb-4">
+                           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${m.status === 'online' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
+                              <Truck className="w-7 h-7" />
+                           </div>
+                           <div>
+                             <h4 className="font-bold text-gray-900">{m.name}</h4>
+                             <p className="text-xs text-gray-500">{m.phone}</p>
+                           </div>
+                         </div>
+
+                         <div className="space-y-3 pt-4 border-t border-gray-50">
+                            <div>
+                               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status do App</p>
+                               <div className="flex items-center gap-2">
+                                  <div className={`w-2 h-2 rounded-full ${m.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`}></div>
+                                  <span className="text-xs font-bold text-gray-700 uppercase">{m.status === 'online' ? 'Ativo' : 'Desconectado'}</span>
+                               </div>
+                            </div>
+                            
+                            <div>
+                               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Link de Acesso</p>
+                               <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-100">
+                                  <span className="text-[10px] font-mono text-gray-500 truncate flex-1 leading-none">
+                                    {window.location.origin}/{tenantSlug}/motoboy/login
+                                  </span>
+                                  <button 
+                                    onClick={() => copyToClipboard(`${window.location.origin}/${tenantSlug}/motoboy/login`, m.id)}
+                                    className="p-1.5 hover:bg-white rounded-lg transition-colors"
+                                  >
+                                    <CheckCircle2 className={`w-4 h-4 ${copySuccess === m.id ? 'text-emerald-500' : 'text-gray-400'}`} />
+                                  </button>
+                               </div>
+                            </div>
+                         </div>
+                       </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Empty State */}
+                {motoboys.length === 0 && (
+                  <div className="py-20 text-center bg-white rounded-[40px] border border-dashed border-gray-200">
+                     <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <Truck className="w-8 h-8 text-gray-300" />
+                     </div>
+                     <h3 className="font-bold text-gray-900 mb-2">Sem Entregadores</h3>
+                     <p className="text-sm text-gray-500">Cadastre seu primeiro motoboy para começar a entregar.</p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {isCreatingMotoboy && (
+              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-white rounded-[40px] p-8 max-w-md w-full shadow-2xl"
+                >
+                  <h3 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter mb-6">Novo Entregador</h3>
+                  <form onSubmit={handleCreateMotoboy} className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1 block">Nome Completo</label>
+                      <input 
+                        required
+                        type="text"
+                        value={newMotoboy.name}
+                        onChange={e => setNewMotoboy({ ...newMotoboy, name: e.target.value })}
+                        className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-red-500 font-bold"
+                        placeholder="Ex: João Silva"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1 block">WhatsApp (Somente números)</label>
+                      <input 
+                        required
+                        type="tel"
+                        value={newMotoboy.phone}
+                        onChange={e => setNewMotoboy({ ...newMotoboy, phone: e.target.value })}
+                        className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-red-500 font-bold"
+                        placeholder="Ex: 11999999999"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1 block">Placa</label>
+                        <input 
+                          type="text"
+                          value={newMotoboy.plate}
+                          onChange={e => setNewMotoboy({ ...newMotoboy, plate: e.target.value })}
+                          className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-red-500 font-bold uppercase"
+                          placeholder="ABC-1234"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-1 block">Senha Inicial</label>
+                        <input 
+                          required
+                          type="password"
+                          value={newMotoboy.password}
+                          onChange={e => setNewMotoboy({ ...newMotoboy, password: e.target.value })}
+                          className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-red-500 font-bold"
+                          placeholder="••••••"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-4 pt-6">
+                       <button 
+                         type="button" 
+                         onClick={() => setIsCreatingMotoboy(false)}
+                         className="flex-1 py-4 text-gray-500 font-bold uppercase text-xs tracking-widest"
+                       >
+                         Cancelar
+                       </button>
+                       <button 
+                         type="submit" 
+                         className="flex-1 py-4 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-200"
+                       >
+                         Salvar
+                       </button>
+                    </div>
+                  </form>
+                </motion.div>
               </div>
+            )}
+
+            {activeTab === 'menu' && tenantSlug && (
+               <ProductsManager tenantSlug={tenantSlug} />
+            )}
+
+            {activeTab === 'categories' && tenantSlug && (
+               <CategoriesManager tenantSlug={tenantSlug} />
+            )}
+
+            {activeTab === 'customers' && tenantSlug && (
+               <CustomerList tenantSlug={tenantSlug} />
+            )}
+
+            {activeTab === 'settings' && tenantSlug && (
+              <StoreSettings tenantSlug={tenantSlug} />
             )}
           </AnimatePresence>
         </div>
@@ -488,11 +807,17 @@ function NavItem({ active, icon, label, onClick }: { active: boolean, icon: any,
   );
 }
 
-function StatCard({ label, value, icon, trend }: { label: string, value: string, icon: any, trend?: string }) {
+function StatCard({ label, value, icon, trend, theme }: { label: string, value: string, icon: any, trend?: string, theme?: string }) {
+  const themeClasses: Record<string, string> = {
+    'amber': 'bg-amber-50 text-amber-600',
+    'emerald': 'bg-emerald-50 text-emerald-600',
+    'blue': 'bg-blue-50 text-blue-600'
+  };
+  
   return (
     <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
       <div className="flex items-center justify-between mb-4">
-        <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center group-hover:scale-110 transition-transform">
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform ${theme ? themeClasses[theme] : 'bg-gray-50'}`}>
           {icon}
         </div>
         {trend && (

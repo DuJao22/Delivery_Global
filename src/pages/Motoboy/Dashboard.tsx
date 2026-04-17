@@ -30,8 +30,10 @@ export default function MotoboyDashboard() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const [motoboy, setMotoboy] = useState<any>(null);
   const [assignedOrders, setAssignedOrders] = useState<Order[]>([]);
+  const [availableOrders, setAvailableOrders] = useState<Order[]>([]);
   const [isOnline, setIsOnline] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [acceptingId, setAcceptingId] = useState<number | null>(null);
   const navigate = useNavigate();
   const watchId = useRef<number | null>(null);
 
@@ -52,6 +54,13 @@ export default function MotoboyDashboard() {
       });
       const ordersData = await ordersRes.json();
       setAssignedOrders(ordersData);
+      
+      // Fetch available orders
+      const availRes = await tenantFetch(tenantSlug, '/api/motoboy/available-orders', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem(`motoboy_token_${tenantSlug}`)}` }
+      });
+      const availData = await availRes.json();
+      setAvailableOrders(availData);
       
       setLoading(false);
     } catch (err) {
@@ -135,6 +144,25 @@ export default function MotoboyDashboard() {
     }
   };
 
+  const acceptOrder = async (orderId: number) => {
+    setAcceptingId(orderId);
+    try {
+      const res = await tenantFetch(tenantSlug!, `/api/motoboy/orders/${orderId}/accept`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem(`motoboy_token_${tenantSlug}`)}` }
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || 'Erro ao aceitar pedido');
+      }
+      fetchData();
+    } catch (err) {
+      alert('Erro ao aceitar pedido');
+    } finally {
+      setAcceptingId(null);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem(`motoboy_token_${tenantSlug}`);
     localStorage.removeItem(`motoboy_id_${tenantSlug}`);
@@ -193,6 +221,61 @@ export default function MotoboyDashboard() {
             </div>
           )}
         </div>
+
+        {/* Available Orders Section */}
+        {isOnline && availableOrders.length > 0 && !activeOrder && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4 ml-2">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-emerald-500 animate-pulse" />
+                Novos Pedidos Disponíveis
+              </h3>
+              <span className="text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">{availableOrders.length}</span>
+            </div>
+            <div className="space-y-4">
+               {availableOrders.map(order => (
+                 <motion.div 
+                   key={order.id}
+                   initial={{ opacity: 0, scale: 0.95 }}
+                   animate={{ opacity: 1, scale: 1 }}
+                   className="bg-white text-gray-900 p-6 rounded-[32px] shadow-xl border border-emerald-100 relative overflow-hidden group"
+                 >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
+                    
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                       <div>
+                         <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest leading-none mb-1">Pronto p/ Entrega</p>
+                         <h4 className="text-xl font-black italic uppercase tracking-tighter leading-none">#{order.id}</h4>
+                       </div>
+                       <div className="text-right">
+                          <p className="text-sm font-black italic tracking-tighter">R$ {(order.total_price || 0).toFixed(2)}</p>
+                       </div>
+                    </div>
+
+                    <div className="flex gap-3 mb-6 relative z-10">
+                       <MapPin className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                       <div>
+                          <p className="text-xs font-bold leading-relaxed line-clamp-2">{order.delivery_address}</p>
+                          <p className="text-[10px] font-medium text-gray-400 mt-0.5">{order.client_name}</p>
+                       </div>
+                    </div>
+
+                    <button 
+                      onClick={() => acceptOrder(order.id)}
+                      disabled={acceptingId !== null}
+                      className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-emerald-100 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3"
+                    >
+                      {acceptingId === order.id ? (
+                        <>Iniciando...</>
+                      ) : (
+                        <>Aceitar Entrega <ChevronRight className="w-4 h-4" /></>
+                      )}
+                    </button>
+                 </motion.div>
+               ))}
+            </div>
+          </div>
+        )}
 
         {/* Active Delivery */}
         {activeOrder ? (
@@ -258,7 +341,7 @@ export default function MotoboyDashboard() {
                        <p className="text-xs text-gray-400 font-medium truncate max-w-[150px]">{order.client_name}</p>
                     </div>
                     <div className="text-right">
-                       <p className="text-sm font-bold text-white mb-1">R$ {order.total_price.toFixed(2)}</p>
+                       <p className="text-sm font-bold text-white mb-1">R$ {(order.total_price || 0).toFixed(2)}</p>
                        <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Aguardando Coleta</span>
                     </div>
                   </div>

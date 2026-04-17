@@ -5,10 +5,12 @@ import { ChevronRight, ChevronLeft, MapPin, CheckCircle2, ShoppingBag, CreditCar
 import { tenantFetch } from '../../lib/api';
 
 interface CartItem {
-  id: number;
+  id: string;
   name: string;
   price: number;
   quantity: number;
+  selectedOptions?: { id: number; name: string; price: number }[];
+  observation?: string;
 }
 
 export default function CheckoutFlow() {
@@ -26,8 +28,20 @@ export default function CheckoutFlow() {
   const [clientData, setClientData] = useState({ 
     name: user ? user.name : '', 
     phone: user ? user.phone : '',
-    address: ''
   });
+  const [addressData, setAddressData] = useState({
+    type: 'Casa',
+    cep: '',
+    street: '',
+    number: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+    complement: '',
+  });
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<number | 'new' | null>(null);
+  const [isSearchingCep, setIsSearchingCep] = useState(false);
   
   const [password, setPassword] = useState('');
   const [authStep, setAuthStep] = useState<'phone' | 'login' | 'register' | 'authenticated'>(user ? 'authenticated' : 'phone');
@@ -40,6 +54,59 @@ export default function CheckoutFlow() {
       navigate(`/${tenantSlug}`);
     }
   }, [cart, tenantSlug, navigate]);
+
+  useEffect(() => {
+    if (authStep === 'authenticated' && tenantSlug && user?.id) {
+      tenantFetch(tenantSlug, `/api/users/${user.id}/addresses`)
+        .then(res => res.json())
+        .then(data => {
+          setSavedAddresses(data || []);
+          if (data && data.length > 0) {
+            const defaultAddr = data.find((a: any) => a.is_default) || data[0];
+            setSelectedAddressId(defaultAddr.id);
+            setAddressData({
+              type: defaultAddr.type,
+              cep: defaultAddr.cep,
+              street: defaultAddr.street,
+              number: defaultAddr.number,
+              neighborhood: defaultAddr.neighborhood,
+              city: defaultAddr.city,
+              state: defaultAddr.state,
+              complement: defaultAddr.complement || '',
+            });
+          } else {
+            setSelectedAddressId('new');
+          }
+        })
+        .catch(err => console.error('Error fetching addresses:', err));
+    }
+  }, [authStep, tenantSlug]);
+
+  const handleCepLookup = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, '');
+    setAddressData(prev => ({ ...prev, cep: cleanCep }));
+    
+    if (cleanCep.length === 8) {
+      setIsSearchingCep(true);
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const data = await res.json();
+        if (!data.erro) {
+          setAddressData(prev => ({
+            ...prev,
+            street: data.logradouro,
+            neighborhood: data.bairro,
+            city: data.localidade,
+            state: data.uf,
+          }));
+        }
+      } catch (err) {
+        console.error('Error fetching CEP:', err);
+      } finally {
+        setIsSearchingCep(false);
+      }
+    }
+  };
 
   const handleNext = () => setStep(s => Math.min(s + 1, 3));
   const handlePrev = () => setStep(s => Math.max(s - 1, 1));
@@ -108,11 +175,23 @@ export default function CheckoutFlow() {
   };
 
   const submitOrder = async () => {
-    if (authStep !== 'authenticated' || !clientData.address) return;
+    const fullAddress = `${addressData.street}, ${addressData.number}${addressData.complement ? ` - ${addressData.complement}` : ''}, ${addressData.neighborhood}, ${addressData.city}-${addressData.state}, CEP: ${addressData.cep}`;
+    
+    if (authStep !== 'authenticated' || !addressData.street || !addressData.number) return;
     
     setIsSubmitting(true);
     try {
       const currentUser = JSON.parse(localStorage.getItem('user')!);
+      
+      // Save address if new
+      if (selectedAddressId === 'new') {
+        await tenantFetch(tenantSlug!, `/api/users/${currentUser.id}/addresses`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...addressData, is_default: savedAddresses.length === 0 })
+        });
+      }
+
       const res = await tenantFetch(tenantSlug!, '/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,7 +199,7 @@ export default function CheckoutFlow() {
           user_id: currentUser.id,
           client_name: currentUser.name,
           client_phone: currentUser.phone,
-          delivery_address: clientData.address,
+          delivery_address: fullAddress,
           items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price })),
           total_price: total
         })
@@ -153,22 +232,35 @@ export default function CheckoutFlow() {
           <p className="text-gray-500 mb-10 leading-relaxed font-medium">
             Seu pedido foi recebido com sucesso. Em breve o restaurante começará o preparo e você poderá acompanhar a entrega.
           </p>
-          <div className="bg-gray-50 rounded-3xl p-6 mb-10 text-left border border-gray-100">
-             <div className="flex items-center gap-3 mb-4">
-                <MapPin className="w-5 h-5 text-red-500" />
-                <p className="text-sm font-bold truncate">{clientData.address}</p>
-             </div>
+           <div className="bg-gray-50 rounded-3xl p-6 mb-10 text-left border border-gray-100">
+              <div className="flex items-center gap-3 mb-4">
+                 <MapPin className="w-5 h-5 text-red-500" />
+                 <p className="text-sm font-bold truncate">
+                   {addressData.street}, {addressData.number}
+                 </p>
+              </div>
              <div className="flex items-center gap-3">
                 <ShoppingBag className="w-5 h-5 text-red-500" />
                 <p className="text-sm font-bold text-gray-600">{cart.length} itens no total</p>
              </div>
           </div>
-          <button 
-            onClick={() => navigate(`/${tenantSlug}/perfil`)}
-            className="w-full py-5 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-200 hover:bg-red-700 transition-all uppercase tracking-widest text-sm"
-          >
-            Acompanhar Meus Pedidos
-          </button>
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={() => navigate(`/${tenantSlug}/perfil`)}
+              className="w-full py-5 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-200 hover:bg-red-700 transition-all uppercase tracking-widest text-sm"
+            >
+              Acompanhar Meus Pedidos
+            </button>
+            <button 
+              onClick={() => {
+                const text = `Olá! Acabei de realizar o pedido #${Date.now().toString().slice(-4)} no site. Pode confirmar pra mim?`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
+              }}
+              className="w-full py-5 bg-emerald-500 text-white font-bold rounded-2xl shadow-xl shadow-emerald-200 hover:bg-emerald-600 transition-all uppercase tracking-widest text-sm flex items-center justify-center gap-2"
+            >
+              <Phone className="w-5 h-5" /> Confirmar via WhatsApp
+            </button>
+          </div>
         </motion.div>
       </div>
     );
@@ -203,22 +295,129 @@ export default function CheckoutFlow() {
                   <motion.div 
                     key="step1" 
                     initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                    className="space-y-6"
+                    className="space-y-4 md:space-y-6"
                   >
-                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                        <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                           <MapPin className="w-5 h-5 text-red-500" /> Endereço de Entrega
-                        </h2>
-                        <div className="space-y-4">
-                           <textarea 
-                             placeholder="Rua, número, bairro e complemento..."
-                             value={clientData.address}
-                             onChange={(e) => setClientData({ ...clientData, address: e.target.value })}
-                             className="w-full h-32 bg-gray-50 border border-gray-100 rounded-3xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 transition-all resize-none"
-                           />
-                           <p className="text-xs text-gray-400 font-medium px-4">Capriche no complemento (ex: Casa amarela atrás da escola) para facilitar p/ o motoboy.</p>
+                     {authStep === 'authenticated' && savedAddresses.length > 0 && (
+                        <div className="bg-white p-5 md:p-6 rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100 mb-4 md:mb-6">
+                           <h3 className="text-[10px] md:text-sm font-black uppercase text-gray-400 tracking-widest mb-3 md:mb-4 ml-2">Endereços Salvos</h3>
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {savedAddresses.map(addr => (
+                                 <button
+                                   key={addr.id}
+                                   onClick={() => {
+                                     setSelectedAddressId(addr.id);
+                                     setAddressData(addr);
+                                   }}
+                                   className={`text-left p-4 rounded-3xl border-2 transition-all ${selectedAddressId === addr.id ? 'border-red-500 bg-red-50' : 'border-gray-50 hover:border-gray-200 bg-white'}`}
+                                 >
+                                    <div className="flex items-center gap-2 mb-1">
+                                       <div className={`w-2 h-2 rounded-full ${selectedAddressId === addr.id ? 'bg-red-500' : 'bg-gray-300'}`}></div>
+                                       <span className="text-xs font-black uppercase tracking-tighter text-gray-900">{addr.type}</span>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-gray-500 line-clamp-1">{addr.street}, {addr.number}</p>
+                                 </button>
+                              ))}
+                              <button
+                                onClick={() => {
+                                  setSelectedAddressId('new');
+                                  setAddressData({ type: 'Casa', cep: '', street: '', number: '', neighborhood: '', city: '', state: '', complement: '' });
+                                }}
+                                className={`text-left p-4 rounded-3xl border-2 border-dashed transition-all ${selectedAddressId === 'new' ? 'border-red-500 bg-red-50' : 'border-gray-100 hover:border-gray-200'}`}
+                              >
+                                 <span className="text-xs font-black uppercase tracking-tighter text-gray-900">+ Novo Endereço</span>
+                              </button>
+                           </div>
                         </div>
-                     </div>
+                     )}
+
+                     {(selectedAddressId === 'new' || authStep !== 'authenticated') && (
+                        <div className="bg-white p-5 md:p-8 rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100">
+                           <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6 flex items-center gap-2">
+                              <MapPin className="w-5 h-5 text-red-500" /> Detalhes da Entrega
+                           </h2>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="md:col-span-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-1 block">CEP</label>
+                                <div className="relative">
+                                  <input 
+                                    type="text"
+                                    placeholder="00000-000"
+                                    value={addressData.cep}
+                                    onChange={(e) => handleCepLookup(e.target.value)}
+                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-red-500"
+                                  />
+                                  {isSearchingCep && (
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                      <div className="animate-spin w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full"></div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="md:col-span-2 flex gap-2">
+                                {['Casa', 'Trabalho', 'Outro'].map(t => (
+                                  <button
+                                    key={t}
+                                    type="button"
+                                    onClick={() => setAddressData({...addressData, type: t})}
+                                    className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${addressData.type === t ? 'bg-red-600 border-red-600 text-white shadow-lg' : 'bg-white border-gray-100 text-gray-400'}`}
+                                  >
+                                    {t}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="md:col-span-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-1 block">Rua / Logradouro</label>
+                                <input 
+                                  value={addressData.street}
+                                  onChange={e => setAddressData({...addressData, street: e.target.value})}
+                                  placeholder="Nome da rua..."
+                                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-1 block">Número</label>
+                                <input 
+                                  value={addressData.number}
+                                  onChange={e => setAddressData({...addressData, number: e.target.value})}
+                                  placeholder="123"
+                                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-1 block">Complemento</label>
+                                <input 
+                                  value={addressData.complement}
+                                  onChange={e => setAddressData({...addressData, complement: e.target.value})}
+                                  placeholder="Apto, Bloco..."
+                                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-1 block">Bairro</label>
+                                <input 
+                                  value={addressData.neighborhood}
+                                  onChange={e => setAddressData({...addressData, neighborhood: e.target.value})}
+                                  placeholder="Seu bairro..."
+                                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-1 block">Cidade / UF</label>
+                                <input 
+                                  value={`${addressData.city}${addressData.state ? ` - ${addressData.state}` : ''}`}
+                                  readOnly
+                                  className="w-full bg-gray-100 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-500"
+                                />
+                              </div>
+                           </div>
+                        </div>
+                     )}
                   </motion.div>
                )}
 
@@ -306,29 +505,45 @@ export default function CheckoutFlow() {
                   </motion.div>
                )}
 
-               {step === 3 && (
+                {step === 3 && (
                   <motion.div 
                     key="step3" 
                     initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                    className="space-y-6"
+                    className="space-y-4 md:space-y-6"
                   >
-                     <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
-                        <h2 className="text-xl font-bold text-gray-900 mb-6">Resumo do Pedido</h2>
+                     <div className="bg-white p-5 md:p-8 rounded-[32px] md:rounded-[40px] shadow-sm border border-gray-100">
+                        <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Resumo do Pedido</h2>
                         <div className="space-y-4 mb-8">
                            {cart.map(item => (
-                              <div key={item.id} className="flex justify-between items-center text-sm">
-                                 <div className="flex items-center gap-2">
-                                    <span className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center font-bold text-xs">{item.quantity}x</span>
-                                    <span className="font-medium text-gray-700">{item.name}</span>
-                                 </div>
-                                 <span className="font-bold">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                              <div key={item.id} className="space-y-1">
+                                <div className="flex justify-between items-center text-sm">
+                                   <div className="flex items-center gap-2">
+                                      <span className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center font-bold text-xs">{item.quantity}x</span>
+                                      <span className="font-medium text-gray-700">{item.name}</span>
+                                   </div>
+                                   <span className="font-bold text-gray-900">
+                                     R$ {((item.price + (item.selectedOptions?.reduce((s, o) => s + o.price, 0) || 0)) * item.quantity).toFixed(2)}
+                                   </span>
+                                </div>
+                                {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                  <div className="ml-8 flex flex-wrap gap-1">
+                                    {item.selectedOptions.map(opt => (
+                                      <span key={opt.id} className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-gray-50 text-gray-400 rounded">
+                                        + {opt.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {item.observation && (
+                                  <p className="ml-8 text-[10px] text-gray-400 italic">Obs: {item.observation}</p>
+                                )}
                               </div>
                            ))}
                         </div>
                         <div className="border-t pt-4 space-y-2">
                            <div className="flex justify-between text-sm text-gray-500">
                               <span>Subtotal</span>
-                              <span>R$ {total.toFixed(2)}</span>
+                              <span>R$ {(total || 0).toFixed(2)}</span>
                            </div>
                            <div className="flex justify-between text-sm text-emerald-600 font-bold">
                               <span>Entrega</span>
@@ -336,7 +551,7 @@ export default function CheckoutFlow() {
                            </div>
                            <div className="flex justify-between text-xl font-black text-gray-900 pt-2">
                               <span>Total</span>
-                              <span>R$ {total.toFixed(2)}</span>
+                              <span>R$ {(total || 0).toFixed(2)}</span>
                            </div>
                         </div>
 
@@ -365,17 +580,17 @@ export default function CheckoutFlow() {
             <button 
               onClick={handlePrev} 
               disabled={step === 1}
-              className="px-6 py-4 text-gray-400 font-bold uppercase text-xs tracking-widest disabled:opacity-30"
+              className="px-6 py-4 text-gray-400 font-bold uppercase text-[10px] md:text-xs tracking-widest disabled:opacity-30"
             >
                Voltar
             </button>
             <button 
               onClick={step === 3 ? submitOrder : handleNext}
-              disabled={(step === 1 && !clientData.address) || (step === 2 && authStep !== 'authenticated') || isSubmitting}
-              className="flex-1 py-4 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-200 hover:bg-red-700 transition-all active:scale-95 flex items-center justify-center gap-3"
+              disabled={(step === 1 && (!addressData.street || !addressData.number)) || (step === 2 && authStep !== 'authenticated') || isSubmitting}
+              className="flex-1 py-4 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-200 hover:bg-red-700 transition-all active:scale-95 flex items-center justify-center gap-2 uppercase tracking-widest text-[10px] md:text-sm disabled:opacity-50"
             >
                {isSubmitting ? 'Confirmando...' : (step === 3 ? 'Finalizar Pedido' : 'Próximo Passo')}
-               <ChevronRight className="w-5 h-5" />
+               <ChevronRight className="w-4 h-4 md:w-5 h-5" />
             </button>
          </div>
       </footer>

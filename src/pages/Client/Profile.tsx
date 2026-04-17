@@ -28,7 +28,8 @@ interface Order {
 export default function ClientProfile() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
+  const [activeTab, setActiveTab] = useState<'current' | 'history' | 'addresses'>('current');
+  const [addresses, setAddresses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   const navigate = useNavigate();
@@ -49,15 +50,36 @@ export default function ClientProfile() {
       });
   };
 
+  const fetchAddresses = () => {
+    if (!user) return;
+    tenantFetch(tenantSlug!, `/api/users/${user.id}/addresses`)
+      .then(res => res.json())
+      .then(data => setAddresses(data || []))
+      .catch(err => console.error('Error fetching addresses:', err));
+  };
+
   useEffect(() => {
     if (!user) {
       navigate(`/${tenantSlug}/login`);
       return;
     }
     fetchOrders();
+    fetchAddresses();
     const interval = setInterval(fetchOrders, 10000);
     return () => clearInterval(interval);
   }, [user, navigate, tenantSlug]);
+
+  const handleDeleteAddress = async (id: number) => {
+    if (!confirm('Deseja excluir este endereço?')) return;
+    try {
+      await tenantFetch(tenantSlug!, `/api/users/${user.id}/addresses/${id}`, {
+        method: 'DELETE'
+      });
+      fetchAddresses();
+    } catch (err) {
+      console.error('Error deleting address:', err);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -94,46 +116,57 @@ export default function ClientProfile() {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       {/* Sidebar - Desktop Layout */}
       <div className="flex flex-col lg:flex-row flex-1">
-        <aside className="w-full lg:w-80 bg-white border-r border-gray-100 p-8 shrink-0">
-          <Link to={`/${tenantSlug}`} className="inline-flex items-center text-xs font-bold text-gray-400 uppercase tracking-widest hover:text-red-500 mb-10 transition-colors">
+        <aside className="w-full lg:w-80 bg-white border-b lg:border-r border-gray-100 p-6 md:p-8 shrink-0">
+          <Link to={`/${tenantSlug}`} className="inline-flex items-center text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest hover:text-red-500 mb-6 md:mb-10 transition-colors">
             <ArrowLeft className="w-4 h-4 mr-2" /> Voltar ao Cardápio
           </Link>
           
-          <div className="flex items-center gap-4 mb-10">
-            <div className="w-16 h-16 bg-red-600 rounded-[20px] shadow-lg shadow-red-200 flex items-center justify-center text-white">
-              <User className="w-8 h-8" />
+          <div className="flex items-center gap-4 mb-6 md:mb-10">
+            <div className="w-12 h-12 md:w-16 md:h-16 bg-red-600 rounded-xl md:rounded-[20px] shadow-lg shadow-red-200 flex items-center justify-center text-white">
+              <User className="w-6 h-6 md:w-8 md:h-8" />
             </div>
             <div>
-              <h1 className="text-xl font-black text-gray-900 leading-tight uppercase italic">{user.name}</h1>
-              <p className="text-xs font-bold text-gray-400 mt-1 uppercase tracking-widest">{user.phone}</p>
+              <h1 className="text-lg md:text-xl font-black text-gray-900 leading-tight uppercase italic">{user.name}</h1>
+              <p className="text-[10px] md:text-xs font-bold text-gray-400 mt-1 uppercase tracking-widest">{user.phone}</p>
             </div>
           </div>
 
-          <nav className="space-y-2">
+          <nav className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible no-scrollbar pb-2 lg:pb-0">
             <button
               onClick={() => setActiveTab('current')}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all font-bold text-sm ${
+              className={`flex items-center gap-3 md:gap-4 px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl transition-all font-bold text-[10px] md:text-sm whitespace-nowrap shrink-0 ${
                 activeTab === 'current' ? 'bg-red-50 text-red-600' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
               }`}
             >
-              <Package className="w-5 h-5" />
-              <span>Pedidos em Curso</span>
-              {activeTab === 'current' && <motion.div layoutId="tab" className="w-1.5 h-1.5 bg-red-600 rounded-full ml-auto" />}
+              <Package className="w-4 h-4 md:w-5 md:h-5" />
+              <span>Em Curso</span>
+              {activeTab === 'current' && <motion.div layoutId="tab" className="hidden lg:block w-1.5 h-1.5 bg-red-600 rounded-full ml-auto" />}
             </button>
 
             <button
               onClick={() => setActiveTab('history')}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all font-bold text-sm ${
+              className={`flex items-center gap-3 md:gap-4 px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl transition-all font-bold text-[10px] md:text-sm whitespace-nowrap shrink-0 ${
                 activeTab === 'history' ? 'bg-red-50 text-red-600' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
               }`}
             >
-              <History className="w-5 h-5" />
+              <History className="w-4 h-4 md:w-5 md:h-5" />
               <span>Histórico</span>
-              {activeTab === 'history' && <motion.div layoutId="tab" className="w-1.5 h-1.5 bg-red-600 rounded-full ml-auto" />}
+              {activeTab === 'history' && <motion.div layoutId="tab" className="hidden lg:block w-1.5 h-1.5 bg-red-600 rounded-full ml-auto" />}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('addresses')}
+              className={`flex items-center gap-3 md:gap-4 px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl transition-all font-bold text-[10px] md:text-sm whitespace-nowrap shrink-0 ${
+                activeTab === 'addresses' ? 'bg-red-50 text-red-600' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              <MapPin className="w-4 h-4 md:w-5 md:h-5" />
+              <span>Endereços</span>
+              {activeTab === 'addresses' && <motion.div layoutId="tab" className="hidden lg:block w-1.5 h-1.5 bg-red-600 rounded-full ml-auto" />}
             </button>
           </nav>
 
-          <div className="mt-12 pt-8 border-t border-gray-50">
+          <div className="hidden lg:block mt-12 pt-8 border-t border-gray-50">
              <button 
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-6 py-4 text-red-600 font-bold text-sm hover:bg-red-50 rounded-2xl transition-colors"
@@ -144,13 +177,15 @@ export default function ClientProfile() {
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 p-8 lg:p-16">
+        <main className="flex-1 p-4 md:p-8 lg:p-16">
           <div className="max-w-4xl mx-auto">
-            <header className="mb-12">
-               <h2 className="text-3xl font-black text-gray-900 uppercase italic tracking-tighter">
-                 {activeTab === 'current' ? 'Acompanhar Pedidos' : 'Meus Pedidos Antigos'}
+            <header className="mb-6 md:mb-12">
+               <h2 className="text-xl md:text-3xl font-black text-gray-900 uppercase italic tracking-tighter">
+                 {activeTab === 'current' ? 'Acompanhar Pedidos' : activeTab === 'history' ? 'Meus Pedidos Antigos' : 'Endereços Salvos'}
                </h2>
-               <p className="text-gray-500 font-medium mt-2">Veja o status real de cada entrega e histórico de consumo.</p>
+               <p className="text-xs md:text-gray-500 font-medium mt-1 md:mt-2">
+                 {activeTab === 'addresses' ? 'Gerencie seus locais de entrega favoritos.' : 'Veja o status real de cada entrega e histórico de consumo.'}
+               </p>
             </header>
 
             <AnimatePresence mode="wait">
@@ -197,7 +232,7 @@ export default function ClientProfile() {
                            </div>
 
                            <div className="flex flex-col md:items-end">
-                              <p className="text-2xl font-black text-gray-900">R$ {order.total_amount.toFixed(2)}</p>
+                              <p className="text-2xl font-black text-gray-900">R$ {(order.total_amount || 0).toFixed(2)}</p>
                               <div className="flex items-center gap-2 mt-2 text-gray-500">
                                  <MapPin className="w-3.5 h-3.5" />
                                  <span className="text-[10px] font-bold uppercase tracking-widest truncate max-w-[150px]">{order.customer_address}</span>
@@ -230,7 +265,7 @@ export default function ClientProfile() {
                      </div>
                    ))}
                 </motion.div>
-              ) : (
+              ) : activeTab === 'history' ? (
                 <motion.div key="past-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden">
                    <div className="overflow-x-auto">
                       <table className="w-full text-left">
@@ -257,13 +292,41 @@ export default function ClientProfile() {
                                      </span>
                                   </td>
                                   <td className="px-6 py-5 text-right font-black text-gray-900">
-                                     R$ {order.total_amount.toFixed(2)}
+                                     R$ {(order.total_amount || 0).toFixed(2)}
                                   </td>
                                </tr>
                             ))}
                          </tbody>
                       </table>
                    </div>
+                </motion.div>
+              ) : (
+                <motion.div key="address-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   {addresses.map(addr => (
+                      <div key={addr.id} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm flex items-center justify-between group">
+                         <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400 group-hover:bg-red-50 group-hover:text-red-500 transition-colors">
+                               <MapPin className="w-6 h-6" />
+                            </div>
+                            <div>
+                               <h4 className="font-black uppercase italic tracking-tighter text-gray-900">{addr.type}</h4>
+                               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{addr.street}, {addr.number}</p>
+                               <p className="text-[10px] text-gray-300 font-medium">{addr.neighborhood} - {addr.city}</p>
+                            </div>
+                         </div>
+                         <button 
+                           onClick={() => handleDeleteAddress(addr.id)}
+                           className="p-3 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                         >
+                            <LogOut className="w-5 h-5 rotate-180" />
+                         </button>
+                      </div>
+                   ))}
+                   {addresses.length === 0 && (
+                      <div className="md:col-span-2 py-20 bg-white rounded-[40px] border border-dashed border-gray-200 text-center">
+                         <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Nenhum endereço salvo</p>
+                      </div>
+                   )}
                 </motion.div>
               )}
             </AnimatePresence>

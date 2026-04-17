@@ -278,7 +278,7 @@ export default function SuperAdminDashboard() {
             </div>
             <div>
               <p className="text-sm text-text-light font-medium">Faturamento Mensal</p>
-              <p className="text-2xl font-bold text-text-main">R$ {monthlyRevenue.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-text-main">R$ {(monthlyRevenue || 0).toFixed(2)}</p>
             </div>
           </div>
           

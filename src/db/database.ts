@@ -29,37 +29,65 @@ export async function initDb() {
   try {
     // Tenants (Restaurants/Stores)
     await database.exec(`
-      CREATE TABLE IF NOT EXISTS tenants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        slug TEXT NOT NULL UNIQUE,
-        name TEXT NOT NULL,
-        logo TEXT,
-        cover_image TEXT,
-        primary_color TEXT DEFAULT '#EF4444',
-        secondary_color TEXT DEFAULT '#F9FAFB',
-        admin_username TEXT,
-        admin_password TEXT,
-        status TEXT DEFAULT 'active',
-        payment_config TEXT,
-        is_exempt INTEGER DEFAULT 0,
-        subscription_due_date DATETIME,
-        address TEXT,
-        lat REAL,
-        lng REAL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
+        CREATE TABLE IF NOT EXISTS tenants (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          slug TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          logo TEXT,
+          cover_image TEXT,
+          primary_color TEXT DEFAULT '#EF4444',
+          secondary_color TEXT DEFAULT '#F9FAFB',
+          admin_username TEXT,
+          admin_password TEXT,
+          status TEXT DEFAULT 'active',
+          payment_config TEXT,
+          is_exempt INTEGER DEFAULT 0,
+          subscription_due_date DATETIME,
+          address TEXT,
+          lat REAL,
+          lng REAL,
+          opening_hours TEXT, -- JSON
+          delivery_fee REAL DEFAULT 0,
+          prep_time_avg INTEGER DEFAULT 30,
+          is_open INTEGER DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
-      CREATE TABLE IF NOT EXISTS menu_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tenant_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        description TEXT,
-        price REAL NOT NULL,
-        category TEXT,
-        image TEXT,
-        status TEXT DEFAULT 'available',
-        FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
-      );
+        CREATE TABLE IF NOT EXISTS categories (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tenant_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          order_index INTEGER DEFAULT 0,
+          is_active INTEGER DEFAULT 1,
+          FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS menu_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tenant_id INTEGER NOT NULL,
+          category_id INTEGER,
+          name TEXT NOT NULL,
+          description TEXT,
+          price REAL NOT NULL,
+          category TEXT, -- Label for legacy support
+          image TEXT,
+          status TEXT DEFAULT 'available',
+          sku TEXT,
+          stock_quantity INTEGER,
+          prep_time INTEGER,
+          FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+          FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS product_options (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          menu_item_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL, -- 'variation' or 'addition'
+          price REAL DEFAULT 0,
+          is_active INTEGER DEFAULT 1,
+          FOREIGN KEY (menu_item_id) REFERENCES menu_items (id) ON DELETE CASCADE
+        );
 
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,9 +99,26 @@ export async function initDb() {
         lat REAL,
         lng REAL,
         status TEXT DEFAULT 'active',
+        is_vip INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(tenant_id, phone),
         FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS user_addresses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        type TEXT DEFAULT 'Casa', -- 'Casa', 'Trabalho', 'Outro'
+        cep TEXT,
+        street TEXT NOT NULL,
+        number TEXT NOT NULL,
+        neighborhood TEXT,
+        city TEXT,
+        state TEXT,
+        complement TEXT,
+        is_default INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS motoboys (
@@ -81,6 +126,7 @@ export async function initDb() {
         tenant_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         phone TEXT NOT NULL,
+        password TEXT,
         plate TEXT,
         status TEXT DEFAULT 'offline', -- offline, online, busy
         lat REAL,
@@ -97,6 +143,7 @@ export async function initDb() {
         client_phone TEXT NOT NULL,
         items TEXT NOT NULL, -- JSON string
         total_price REAL NOT NULL,
+        payment_method TEXT, -- 'pix', 'money', 'card'
         status TEXT DEFAULT 'pending', -- pending, preparing, ready, out_for_delivery, delivered, cancelled
         delivery_address TEXT NOT NULL,
         delivery_lat REAL,
@@ -137,6 +184,17 @@ export async function initDb() {
           (?, 'Fritas com Cheddar e Bacon', 'Batata palito crocante com queijo e bacon.', 22.50, 'Acompanhamentos', 'https://images.unsplash.com/photo-1573082883907-8b9bb260163c?w=500&q=80')
         `, id1, id1, id1);
 
+        // Add options for X-Burger
+        const xburger = await database.get('SELECT id FROM menu_items WHERE name = "X-Burger Clássico"');
+        if (xburger) {
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Ponto da Carne: Mal Passado', 'variation', 0);
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Ponto da Carne: Ao Ponto', 'variation', 0);
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Ponto da Carne: Bem Passado', 'variation', 0);
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Extra queijo', 'addition', 4.50);
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Bacon crocante', 'addition', 5.00);
+          await database.run('INSERT INTO product_options (menu_item_id, name, type, price) VALUES (?, ?, ?, ?)', xburger.id, 'Sem Cebola', 'variation', 0);
+        }
+
         // Second Tenant (Requested Example)
         const result2 = await database.run(`
           INSERT INTO tenants (slug, name, admin_username, admin_password, address, lat, lng) 
@@ -152,10 +210,10 @@ export async function initDb() {
         `, id2, id2, id2);
 
         await database.run(`
-          INSERT INTO motoboys (tenant_id, name, phone, plate, status) VALUES 
-          (?, 'Roberto Silva', '11999999999', 'XYZ-1234', 'online'),
-          (?, 'Marta Santos', '11888888888', 'ABC-5678', 'online'),
-          (?, 'Carlos Correon', '11777777777', 'KLI-9988', 'online')
+          INSERT INTO motoboys (tenant_id, name, phone, password, plate, status) VALUES 
+          (?, 'Roberto Silva', '11999999999', '123456', 'XYZ-1234', 'online'),
+          (?, 'Marta Santos', '11888888888', '123456', 'ABC-5678', 'online'),
+          (?, 'Carlos Correon', '11777777777', '123456', 'KLI-9988', 'online')
         `, id1, id1, id2);
       }
   } catch (error) {
