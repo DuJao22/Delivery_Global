@@ -49,6 +49,7 @@ export default function CheckoutFlow() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'Dinheiro' | 'Cartão'>('PIX');
+  const [changeAmount, setChangeAmount] = useState('');
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -203,14 +204,17 @@ export default function CheckoutFlow() {
           delivery_address: fullAddress,
           items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price, selectedOptions: i.selectedOptions, observation: i.observation })),
           total_price: total,
-          payment_method: paymentMethod
+          payment_method: paymentMethod,
+          change_amount: paymentMethod === 'Dinheiro' && changeAmount ? parseFloat(changeAmount.replace(',', '.')) : null
         })
       });
 
       if (res.ok) {
         setOrderSuccess(true);
       } else {
-        alert('Erro ao criar pedido.');
+        const errorData = await res.json().catch(() => ({ error: 'Error processing order' }));
+        console.error('[API] Error creating order:', errorData);
+        alert(`Erro ao criar pedido: ${errorData.error || 'Tente novamente.'}`);
       }
     } catch (error) {
       alert('Erro de conexão ao criar pedido.');
@@ -585,6 +589,28 @@ export default function CheckoutFlow() {
                                   </button>
                                 ))}
                             </div>
+
+                            {paymentMethod === 'Dinheiro' && (
+                              <motion.div 
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="mt-6 p-6 bg-gray-50 rounded-3xl border border-gray-100"
+                              >
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 mb-2 block">Troco para quanto?</label>
+                                <div className="relative">
+                                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">R$</span>
+                                  <input 
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={changeAmount}
+                                    onChange={e => setChangeAmount(e.target.value.replace(/[^0-9,.]/g, ''))}
+                                    placeholder="0,00"
+                                    className="w-full pl-12 pr-6 py-4 bg-white border border-gray-200 rounded-2xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                  />
+                                </div>
+                                <p className="text-[9px] text-gray-400 mt-2 ml-2 italic">Deixe em branco se não precisar de troco.</p>
+                              </motion.div>
+                            )}
                         </div>
                      </div>
                   </motion.div>

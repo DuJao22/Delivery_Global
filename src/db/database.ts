@@ -144,6 +144,7 @@ export async function initDb() {
         items TEXT NOT NULL, -- JSON string
         total_price REAL NOT NULL,
         payment_method TEXT, -- 'pix', 'money', 'card'
+        change_amount REAL, -- Troco para quanto?
         status TEXT DEFAULT 'pending', -- pending, preparing, ready, out_for_delivery, delivered, cancelled
         delivery_address TEXT NOT NULL,
         delivery_lat REAL,
@@ -183,6 +184,18 @@ export async function initDb() {
         await database.run("UPDATE tenants SET is_exempt = 1 WHERE slug IN ('burguer-central', 'lanchonete-exemplo')");
       } catch (e) {
         console.warn("[DB] Failed to force exempt status:", (e as Error).message);
+      }
+
+      // Ensure orders has change_amount column
+      try {
+        const orderTableInfo = await database.all("PRAGMA table_info(orders)");
+        const hasChangeAmount = orderTableInfo.some(col => col.name === 'change_amount');
+        if (!hasChangeAmount) {
+          await database.exec("ALTER TABLE orders ADD COLUMN change_amount REAL");
+          console.log("[DB] Added change_amount column to orders table");
+        }
+      } catch (e) {
+        console.warn("[DB] Failed to migrate orders table:", (e as Error).message);
       }
 
       // First Tenant
